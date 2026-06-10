@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vishwa Bank — Premium Internet Banking</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    /* Styling overrides/enhancements for Vishwa Bank Portal */
+    .bank-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--green), var(--brand));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      color: #fff;
+    }
+    .bank-header {
+      background: linear-gradient(180deg, #0b1329 0%, #060b18 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+    }
+    .enroll-path-canvas {
+      width: 100%;
+      height: 150px;
+      border: 1px dashed var(--border-light);
+      background: var(--bg-input);
+      border-radius: var(--radius);
+      margin: 1rem 0;
+      position: relative;
+      cursor: crosshair;
+    }
+    .path-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--text-muted);
+      pointer-events: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+    /* Floating Demo Simulator Panel */
+    .demo-controller {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 300px;
+      background: rgba(13, 21, 38, 0.95);
+      border: 1px solid var(--border-bright);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border-radius: var(--radius-lg);
+      z-index: 999;
+      backdrop-filter: blur(10px);
+      transition: transform 0.3s ease;
+    }
+    .demo-controller.collapsed {
+      transform: translateY(calc(100% - 40px));
+    }
+    .demo-ctrl-header {
+      padding: 0.6rem 1rem;
+      background: var(--bg-card-alt);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      border-top-left-radius: calc(var(--radius-lg) - 1px);
+      border-top-right-radius: calc(var(--radius-lg) - 1px);
+    }
+    .demo-ctrl-body {
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .sim-mode-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+    .sim-mode-btn:hover {
+      border-color: var(--brand);
+    }
+    .sim-mode-btn.active {
+      border-color: var(--brand);
+      background: rgba(59, 130, 246, 0.1);
+    }
+    .sim-mode-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .sim-mode-desc {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+    }
+    .live-sdk-status {
+      border-top: 1px solid var(--border);
+      padding-top: 0.75rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body class="bank-page">
+
+  <!-- Main Bank Header Navigation -->
+  <header class="navbar">
+    <div class="navbar-brand">
+      <div class="bank-logo">V</div>
+      <span>Vishwa Bank</span>
+    </div>
+    <div class="navbar-actions">
+      <!-- SDK status indicator -->
+      <div class="shield-badge" id="sdk-status-badge">
+        <div class="shield-dot"></div>
+        <span id="sdk-status-text">BehaviorShield: Active</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="logout-btn" style="display: none;">Logout</button>
+    </div>
+  </header>
+
+  <!-- Content Container -->
+  <main class="container mt-6 mb-8" style="max-width: 600px;">
+
+    <!-- ==========================================
+         VIEW 0: USERNAME SEARCH & GATE
+         ========================================== -->
+    <div id="username-view" class="card card-glass">
+      <h2 class="mb-2 text-center">Welcome to Vishwa Bank</h2>
+      <p class="text-muted text-center text-sm mb-4">Please enter your Username to log in or register.</p>
+      
+      <div class="form-group mb-4">
+        <label class="form-label" for="start-username">NetBanking Username</label>
+        <input type="text" id="start-username" class="form-input" placeholder="e.g., solaris_typist" autocomplete="off" required>
+      </div>
+
+      <button id="btn-next-step" class="btn btn-primary btn-block">Continue</button>
+    </div>
+
+    <!-- ==========================================
+         VIEW 1: ENROLLMENT WIZARD
+         ========================================== -->
+    <div id="enroll-view" class="card card-glass hidden">
+      <h2 class="mb-2">Establish Behavioral Profile</h2>
+      <p class="text-muted text-sm mb-4">
+        To activate BehaviorShield, we need to register your typing signature. Type the passcode exactly as shown 5 times.
+      </p>
+
+      <!-- Passphrase box -->
+      <div class="text-center mb-4">
+        <h5 class="mb-1">Required Passphrase</h5>
+        <div id="enroll-passphrase-display" class="text-mono text-brand fw-700 text-xl" style="background: var(--bg-surface); padding: 0.6rem; border-radius: var(--radius);">
+          SecureAuth@India1
+        </div>
+      </div>
+
+      <!-- Input and progress -->
+      <div class="form-group mb-3">
+        <div class="flex justify-between items-center">
+          <label class="form-label" for="enroll-input">Type passphrase</label>
+          <span class="text-mono text-xs text-secondary" id="enroll-progress-text">Sample 0/5</span>
+        </div>
+        <input type="text" id="enroll-input" class="form-input text-center text-mono" autocomplete="off" placeholder="Type here and press Enter...">
+      </div>
+
+      <!-- Progress bar -->
+      <div class="score-bar mb-4">
+        <div id="enroll-progress-bar" class="score-bar-fill green" style="width: 0%;"></div>
+      </div>
+
+      <!-- Mouse tracing container (step 3) -->
+      <div id="enroll-mouse-step" class="hidden">
+        <h5 class="mb-1">Step 2: Mouse Trajectory Calibration</h5>
+        <p class="text-muted text-xs">Trace the line from START to END to record natural mouse velocity.</p>
+        <div class="enroll-path-canvas" id="mouse-path-area">
+          <span class="path-label">Trace path from left to right</span>
+          <svg width="100%" height="150" style="position: absolute; top:0; left:0;">
+            <path id="calibration-svg-path" d="M 40 75 Q 150 20 280 75 T 520 75" stroke="var(--border-bright)" stroke-width="3" fill="none" stroke-dasharray="6 4"/>
+            <circle cx="40" cy="75" r="10" fill="var(--cyan)"/>
+            <text x="35" y="100" fill="var(--cyan)" font-size="10" font-weight="700">START</text>
+            <circle cx="520" cy="75" r="10" fill="var(--brand)"/>
+            <text x="510" y="100" fill="var(--brand)" font-size="10" font-weight="700">END</text>
+          </svg>
+        </div>
+        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green);">✓ Calibration successful</div>
+      </div>
+
+      <div class="flex gap-3 mt-4">
+        <button id="enroll-cancel" class="btn btn-secondary btn-block">Back</button>
+        <button id="enroll-complete-btn" class="btn btn-primary btn-block" disabled>Complete Enrollment</button>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         VIEW 2: LOGIN VIEW
+         ========================================== -->
+    <div id="login-view" class="card card-glass hidden">
+      <h2 class="mb-2 text-center">Sign In</h2>
+      <p id="login-message" class="text-muted text-center text-sm mb-4">Login using your NetBanking credentials.</p>
+      
+      <div class="form-group mb-3">
+        <label class="form-label" for="login-username-readonly">Username</label>
+        <input type="text" id="login-username-readonly" class="form-input" readonly>
+      </div>
+
+      <div class="form-group mb-4">
+        <label class="form-label" for="login-password">NetBanking Passphrase</label>
+        <input type="password" id="login-password" class="form-input text-mono" placeholder="Enter passphrase..." autocomplete="off" required>
+      </div>
+
+      <div class="flex gap-3">
+        <button id="login-back" class="btn btn-secondary btn-block">Back</button>
+        <button id="login-submit" class="btn btn-primary btn-block">Log In</button>
+      </div>
+    </div>
+
+    <!-- ==========================================
+         VIEW 3: PORTAL VIEW (POST-LOGIN)
+         ========================================== -->
+    <div id="portal-view" class="hidden">
+      
+      <!-- Account Balance Header -->
+      <div class="balance-card mb-4">
+        <div class="balance-label">Total Account Balance</div>
+        <div class="balance-amount">₹ 4,23,891.50</div>
+        <div class="text-xs text-muted mt-2" style="color: rgba(255,255,255,0.7) !important;">
+          Vishwa Bank NetBanking • Account: ******7129
+        </div>
+      </div>
+
+      <!-- Live Risk Monitor Widget -->
+      <div class="card mb-4" style="border-color: rgba(6, 182, 212, 0.2);">
+        <div class="flex justify-between items-center mb-2">
+          <h5>Live Session Risk Score</h5>
+          <span id="live-risk-badge" class="badge badge-green">Green</span>
+        </div>
+        <div class="score-display mb-3">
+          <div class="flex items-end gap-2">
+            <span id="live-risk-score" class="score-number green">0.0</span>
+            <span class="text-muted text-mono text-sm">/ 100</span>
+          </div>
+        </div>
+        <div class="score-bar">
+          <div id="live-risk-bar" class="score-bar-fill green" style="width: 0%;"></div>
+        </div>
+        <div class="text-xs text-muted mt-2 text-mono text-center">
+          Active Interval: <span id="live-interval-text">30</span>s • Scored via BehaviorShield Engine
+        </div>
+      </div>
+
+      <!-- Fund Transfer Form -->
+      <div class="card card-glass mb-4">
+        <h3 class="mb-3">Quick Funds Transfer</h3>
+        
+        <div class="form-group mb-3">
+          <label class="form-label" for="tx-payee">Payee Name</label>
+          <input type="text" id="tx-payee" class="form-input" placeholder="e.g. Ramesh Kumar" autocomplete="off">
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="tx-account">Account Number</label>
+          <input type="text" id="tx-account" class="form-input text-mono" placeholder="e.g. 5010023912903" autocomplete="off">
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label" for="tx-amount">Amount (INR)</label>
+          <input type="number" id="tx-amount" class="form-input text-mono" placeholder="₹ Enter Amount..." autocomplete="off">
+        </div>
+
+        <button id="tx-submit" class="btn btn-primary btn-block">Transfer Funds</button>
+      </div>
+
+      <!-- Recent Transactions -->
+      <div class="card">
+        <h4 class="mb-3">Recent Transactions</h4>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Details</th>
+              <th>Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="transaction-rows">
+            <tr>
+              <td class="text-mono text-xs">Today</td>
+              <td>Electricity Bill Payment</td>
+              <td class="text-mono text-brand fw-600">- ₹ 4,200.00</td>
+              <td><span class="badge badge-green">Paid</span></td>
+            </tr>
+            <tr>
+              <td class="text-mono text-xs">08 Jun</td>
+              <td>Salary Credited</td>
+              <td class="text-mono fw-600" style="color: var(--green);">+ ₹ 95,000.00</td>
+              <td><span class="badge badge-green">Success</span></td>
+            </tr>
+            <tr>
+              <td class="text-mono text-xs">05 Jun</td>
+              <td>Transfer to Asha Sharma</td>
+              <td class="text-mono text-brand fw-600">- ₹ 12,500.00</td>
+              <td><span class="badge badge-green">Success</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ==========================================
+       FLOATING DEMO SIMULATOR WIDGET
+       ========================================== -->
+  <aside class="demo-controller" id="demo-widget">
+    <div class="demo-ctrl-header" id="demo-widget-toggle">
+      <span class="text-mono fw-700 text-sm">🛠️ DEMO CONTROLLER</span>
+      <span id="demo-toggle-icon">▼</span>
+    </div>
+    
+    <div class="demo-ctrl-body">
+      <h5 class="mb-1">Select Persona Mode</h5>
+      <p class="text-muted text-xs">Simulates keyboard/mouse events with different biometric signatures.</p>
+
+      <!-- Persona Modes -->
+      <button class="sim-mode-btn active" data-persona="owner">
+        <div class="dot-green status-dot"></div>
+        <div>
+          <div class="sim-mode-title">Legitimate Owner</div>
+          <div class="sim-mode-desc">Standard fluid typing & curved mouse paths.</div>
+        </div>
+      </button>
+
+      <button class="sim-mode-btn" data-persona="intruder">
+        <div class="dot-amber status-dot"></div>
+        <div>
+          <div class="sim-mode-title">Human Intruder</div>
+          <div class="sim-mode-desc">Hesitant rhythm, slow keys, odd mouse pauses.</div>
+        </div>
+      </button>
+
+      <button class="sim-mode-btn" data-persona="bot">
+        <div class="dot-red status-dot"></div>
+        <div>
+          <div class="sim-mode-title">Automated Bot Script</div>
+          <div class="sim-mode-desc">0ms timings, straight lines, webdriver tags.</div>
+        </div>
+      </button>
+
+      <!-- Autocomplete button -->
+      <div class="live-sdk-status">
+        <button id="btn-quick-fill" class="btn btn-secondary btn-sm btn-block">⚡ Quick-Fill Credentials</button>
+      </div>
+      
+      <div class="text-xs text-muted text-center text-mono mt-1">
+        Mode active on all inputs.
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==========================================
+       MODAL OVERLAYS (FREEZE, CHALLENGE, OTP)
+       ========================================== -->
+
+  <!-- Fullscreen Matrix Freeze -->
+  <div id="freeze-overlay" class="freeze-overlay hidden">
+    <div class="freeze-box">
+      <div class="freeze-icon">🚨</div>
+      <h2>Session Frozen</h2>
+      <p>Continuous biometric checks detected highly anomalous keystroke and mouse rhythms during this session.</p>
+      <p class="text-sm">Vishwa Bank security engine has locked this session to prevent fraud. Please contact customer care.</p>
+      <div class="hotline">FRAUD HOTLINE: 1800-420-SHIELD</div>
+      <div class="mt-4">
+        <button class="btn btn-secondary btn-sm" id="btn-freeze-reset">Return to Login</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Amber Mid Passphrase Challenge -->
+  <div id="challenge-backdrop" class="challenge-modal-backdrop hidden">
+    <div class="challenge-modal">
+      <h3>Identity Verification</h3>
+      <p>Due to a change in your typing rhythm, please verify your identity by re-typing the baseline passphrase:</p>
+      <div class="text-mono text-center text-brand fw-700 mb-4" style="background: var(--bg-surface); padding: 0.5rem; border-radius: var(--radius); font-size: 1.2rem;">
+        SecureAuth@India1
+      </div>
+      <div class="form-group mb-4">
+        <input type="text" id="challenge-input" class="form-input text-center text-mono" placeholder="Type baseline passphrase here..." autocomplete="off">
+        <div id="challenge-error" class="text-sm text-brand mt-1 hidden" style="color: var(--red);">Verification failed. Try again.</div>
+      </div>
+      <div class="flex justify-between items-center">
+        <span class="text-xs text-muted" id="challenge-attempts">Attempts remaining: 3</span>
+        <button id="challenge-submit-btn" class="btn btn-primary btn-sm">Verify Identity</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Amber High OTP Modal -->
+  <div id="otp-backdrop" class="challenge-modal-backdrop hidden">
+    <div class="challenge-modal" style="border-color: var(--amber);">
+      <h3>Enhanced Verification Required</h3>
+      <p>Due to suspicious session activity, a one-time passcode (OTP) has been sent to your registered mobile.</p>
+      <div class="form-group mb-4">
+        <input type="text" id="otp-input" class="form-input text-center text-mono" placeholder="------" maxlength="6" autocomplete="off" style="font-size: 1.5rem; letter-spacing: 0.5em;">
+        <div id="otp-error" class="text-sm text-brand mt-1 hidden" style="color: var(--red);">Invalid verification code. Try again.</div>
+      </div>
+      <div class="flex justify-between items-center">
+        <button id="otp-cancel-btn" class="btn btn-ghost btn-sm">Cancel</button>
+        <button id="otp-submit-btn" class="btn btn-primary btn-sm">Submit Code</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script tags -->
+  <script src="/static/js/sdk.js"></script>
+  <script src="/static/js/bank.js"></script>
+
+</body>
+</html>

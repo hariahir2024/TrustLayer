@@ -1,0 +1,9 @@
+# BehaviorShield — .gitignore
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+datasets/
+*.log
+.DS_Store
+Thumbs.db
