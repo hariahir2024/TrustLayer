@@ -6,7 +6,7 @@
   <title>Vishwa Bank — Premium Internet Banking</title>
   <link rel="stylesheet" href="/static/css/style.css">
   <style>
-    /* Styling overrides/enhancements for Vishwa Bank Portal */
+    /* Premium layout overrides */
     .bank-logo {
       width: 36px;
       height: 36px;
@@ -88,6 +88,7 @@
       cursor: pointer;
       transition: all 0.2s;
       text-align: left;
+      width: 100%;
     }
     .sim-mode-btn:hover {
       border-color: var(--brand);
@@ -110,6 +111,32 @@
       padding-top: 0.75rem;
       margin-top: 0.5rem;
     }
+    /* Redesigned Fullscreen Dashboard layout */
+    .dashboard-layout {
+      display: flex;
+      height: calc(100vh - 64px);
+      overflow: hidden;
+      width: 100%;
+    }
+    .dashboard-content-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      background: var(--bg-base);
+    }
+    .deposit-val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      margin-top: 0.25rem;
+    }
+    .deposit-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
   </style>
 </head>
 <body class="bank-page">
@@ -121,51 +148,46 @@
       <span>Vishwa Bank</span>
     </div>
     <div class="navbar-actions">
-      <!-- SDK status indicator -->
       <div class="shield-badge" id="sdk-status-badge">
         <div class="shield-dot"></div>
-        <span id="sdk-status-text">BehaviorShield: Active</span>
+        <span id="sdk-status-text">BehaviorShield: Monitoring</span>
       </div>
       <button class="btn btn-ghost btn-sm" id="logout-btn" style="display: none;">Logout</button>
     </div>
   </header>
 
-  <!-- Content Container -->
-  <main class="container mt-6 mb-8" style="max-width: 600px;">
-
-    <!-- ==========================================
-         VIEW 0: USERNAME SEARCH & GATE
-         ========================================== -->
+  <!-- ==========================================
+       1. AUTH CONTAINER (CENTERED CARDS)
+       ========================================== -->
+  <div id="auth-container" style="max-width: 500px; margin: 5rem auto 0; padding: 0 1.5rem;">
+    
+    <!-- VIEW 0: USERNAME SEARCH & GATE -->
     <div id="username-view" class="card card-glass">
       <h2 class="mb-2 text-center">Welcome to Vishwa Bank</h2>
-      <p class="text-muted text-center text-sm mb-4">Please enter your Username to log in or register.</p>
+      <p class="text-muted text-center text-sm mb-4">Secure Online Banking Login</p>
       
       <div class="form-group mb-4">
-        <label class="form-label" for="start-username">NetBanking Username</label>
-        <input type="text" id="start-username" class="form-input" placeholder="e.g., solaris_typist" autocomplete="off" required>
+        <label class="form-label" for="start-username">Username</label>
+        <input type="text" id="start-username" class="form-input" placeholder="Enter NetBanking username..." autocomplete="off" required>
       </div>
 
       <button id="btn-next-step" class="btn btn-primary btn-block">Continue</button>
     </div>
 
-    <!-- ==========================================
-         VIEW 1: ENROLLMENT WIZARD
-         ========================================== -->
+    <!-- VIEW 1: ENROLLMENT WIZARD -->
     <div id="enroll-view" class="card card-glass hidden">
-      <h2 class="mb-2">Establish Behavioral Profile</h2>
+      <h2 class="mb-2">Biometric Enrollment</h2>
       <p class="text-muted text-sm mb-4">
-        To activate BehaviorShield, we need to register your typing signature. Type the passcode exactly as shown 5 times.
+        Vishwa Bank requires a one-time typing signature to secure your account. Please type the passphrase exactly as shown 5 times.
       </p>
 
-      <!-- Passphrase box -->
       <div class="text-center mb-4">
-        <h5 class="mb-1">Required Passphrase</h5>
+        <h5 class="mb-1">Target Passphrase</h5>
         <div id="enroll-passphrase-display" class="text-mono text-brand fw-700 text-xl" style="background: var(--bg-surface); padding: 0.6rem; border-radius: var(--radius);">
           SecureAuth@India1
         </div>
       </div>
 
-      <!-- Input and progress -->
       <div class="form-group mb-3">
         <div class="flex justify-between items-center">
           <label class="form-label" for="enroll-input">Type passphrase</label>
@@ -174,17 +196,16 @@
         <input type="text" id="enroll-input" class="form-input text-center text-mono" autocomplete="off" placeholder="Type here and press Enter...">
       </div>
 
-      <!-- Progress bar -->
       <div class="score-bar mb-4">
         <div id="enroll-progress-bar" class="score-bar-fill green" style="width: 0%;"></div>
       </div>
 
-      <!-- Mouse tracing container (step 3) -->
+      <!-- Mouse tracing container -->
       <div id="enroll-mouse-step" class="hidden">
-        <h5 class="mb-1">Step 2: Mouse Trajectory Calibration</h5>
-        <p class="text-muted text-xs">Trace the line from START to END to record natural mouse velocity.</p>
+        <h5 class="mb-1">Mouse Path Alignment</h5>
+        <p class="text-muted text-xs">Trace the curve from START to END to verify cursor movement speed.</p>
         <div class="enroll-path-canvas" id="mouse-path-area">
-          <span class="path-label">Trace path from left to right</span>
+          <span class="path-label">Trace curve left to right</span>
           <svg width="100%" height="150" style="position: absolute; top:0; left:0;">
             <path id="calibration-svg-path" d="M 40 75 Q 150 20 280 75 T 520 75" stroke="var(--border-bright)" stroke-width="3" fill="none" stroke-dasharray="6 4"/>
             <circle cx="40" cy="75" r="10" fill="var(--cyan)"/>
@@ -193,21 +214,19 @@
             <text x="510" y="100" fill="var(--brand)" font-size="10" font-weight="700">END</text>
           </svg>
         </div>
-        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green);">✓ Calibration successful</div>
+        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green);">✓ Mouse pattern verified</div>
       </div>
 
       <div class="flex gap-3 mt-4">
         <button id="enroll-cancel" class="btn btn-secondary btn-block">Back</button>
-        <button id="enroll-complete-btn" class="btn btn-primary btn-block" disabled>Complete Enrollment</button>
+        <button id="enroll-complete-btn" class="btn btn-primary btn-block" disabled>Register Profile</button>
       </div>
     </div>
 
-    <!-- ==========================================
-         VIEW 2: LOGIN VIEW
-         ========================================== -->
+    <!-- VIEW 2: LOGIN VIEW -->
     <div id="login-view" class="card card-glass hidden">
-      <h2 class="mb-2 text-center">Sign In</h2>
-      <p id="login-message" class="text-muted text-center text-sm mb-4">Login using your NetBanking credentials.</p>
+      <h2 class="mb-2 text-center">Verify Credentials</h2>
+      <p id="login-message" class="text-muted text-center text-sm mb-4">Complete authentication to enter.</p>
       
       <div class="form-group mb-3">
         <label class="form-label" for="login-username-readonly">Username</label>
@@ -215,8 +234,8 @@
       </div>
 
       <div class="form-group mb-4">
-        <label class="form-label" for="login-password">NetBanking Passphrase</label>
-        <input type="password" id="login-password" class="form-input text-mono" placeholder="Enter passphrase..." autocomplete="off" required>
+        <label class="form-label" for="login-password">Passphrase</label>
+        <input type="password" id="login-password" class="form-input text-mono" placeholder="Type enrolled passphrase..." autocomplete="off" required>
       </div>
 
       <div class="flex gap-3">
@@ -225,102 +244,256 @@
       </div>
     </div>
 
-    <!-- ==========================================
-         VIEW 3: PORTAL VIEW (POST-LOGIN)
-         ========================================== -->
-    <div id="portal-view" class="hidden">
-      
-      <!-- Account Balance Header -->
-      <div class="balance-card mb-4">
-        <div class="balance-label">Total Account Balance</div>
-        <div class="balance-amount">₹ 4,23,891.50</div>
-        <div class="text-xs text-muted mt-2" style="color: rgba(255,255,255,0.7) !important;">
-          Vishwa Bank NetBanking • Account: ******7129
-        </div>
-      </div>
+  </div>
 
-      <!-- Live Risk Monitor Widget -->
-      <div class="card mb-4" style="border-color: rgba(6, 182, 212, 0.2);">
+  <!-- ==========================================
+       2. REDESIGNED FULL DASHBOARD CONTAINER
+       ========================================== -->
+  <div id="portal-view" class="dashboard-layout hidden">
+    
+    <!-- Left Navigation Menu -->
+    <aside class="sidebar bank-nav-sidebar">
+      <div class="sidebar-header" style="margin-top: 0;">NetBanking Menu</div>
+      <nav class="sidebar-nav">
+        <div class="bank-sidebar-item active" id="tab-nav-dashboard">
+          🏠 Overview Dashboard
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-transfer">
+          💸 Send Money
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-payees">
+          👥 Manage Payees
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-statements">
+          📄 Account Statements
+        </div>
+      </nav>
+
+      <!-- Mini Security Health Widget -->
+      <div class="mini-security-widget mt-8">
         <div class="flex justify-between items-center mb-2">
-          <h5>Live Session Risk Score</h5>
+          <span class="text-xs fw-600 text-secondary uppercase">Behavior Shield</span>
           <span id="live-risk-badge" class="badge badge-green">Green</span>
         </div>
-        <div class="score-display mb-3">
-          <div class="flex items-end gap-2">
-            <span id="live-risk-score" class="score-number green">0.0</span>
-            <span class="text-muted text-mono text-sm">/ 100</span>
-          </div>
+        <div class="flex items-end gap-1 mb-2">
+          <span id="live-risk-score" class="score-number green" style="font-size: 2rem;">0.0</span>
+          <span class="text-muted text-xs">/ 100</span>
         </div>
         <div class="score-bar">
           <div id="live-risk-bar" class="score-bar-fill green" style="width: 0%;"></div>
         </div>
-        <div class="text-xs text-muted mt-2 text-mono text-center">
-          Active Interval: <span id="live-interval-text">30</span>s • Scored via BehaviorShield Engine
+        <div class="text-xs text-muted mt-2 text-mono">
+          Sampling every <span id="live-interval-text">30</span>s
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Panel -->
+    <main class="dashboard-content-area">
+      
+      <!-- TAB 1: OVERVIEW DASHBOARD -->
+      <div id="page-dashboard" class="flex flex-col gap-6">
+        
+        <!-- Welcome banner -->
+        <div class="card card-glass" style="background: linear-gradient(90deg, #0d2354 0%, #081224 100%);">
+          <h2 style="color: #fff;">Welcome back, <span id="hello-user">Customer</span></h2>
+          <p class="text-sm text-secondary">Secured continuously by Solaris BehaviorShield. Last login: Today from registered device.</p>
+        </div>
+
+        <!-- Account Sum Grid -->
+        <div class="bank-summary-grid">
+          <div class="deposit-card">
+            <span class="deposit-label">Savings Account (Primary)</span>
+            <div class="deposit-val balance-amount">₹ 4,23,891.50</div>
+            <p class="text-xs text-muted mt-1">A/C: ******7129</p>
+          </div>
+          <div class="deposit-card">
+            <span class="deposit-label">Current Account (Business)</span>
+            <div class="deposit-val">₹ 12,85,910.00</div>
+            <p class="text-xs text-muted mt-1">A/C: ******8904</p>
+          </div>
+          <div class="deposit-card">
+            <span class="deposit-label">Vishwa Term Deposit</span>
+            <div class="deposit-val">₹ 5,00,000.00</div>
+            <p class="text-xs text-muted mt-1">Matures: 12 Dec 2026</p>
+          </div>
+        </div>
+
+        <!-- Layout column splitting -->
+        <div class="grid-2">
+          
+          <!-- Recent Transactions -->
+          <div class="card">
+            <h4 class="mb-3">Recent Transactions</h4>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Details</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="transaction-rows">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Quick Actions / Utilities -->
+          <div class="card">
+            <h4 class="mb-3">Quick Utilities</h4>
+            <div class="quick-actions">
+              <button class="quick-action-btn" onclick="switchBankTab('transfer')">
+                <span class="icon">💸</span>
+                <span>Send Money</span>
+              </button>
+              <button class="quick-action-btn" onclick="switchBankTab('payees')">
+                <span class="icon">➕</span>
+                <span>Add Payee</span>
+              </button>
+              <button class="quick-action-btn" onclick="switchBankTab('statements')">
+                <span class="icon">📄</span>
+                <span>Statements</span>
+              </button>
+              <button class="quick-action-btn" id="btn-mock-support" onclick="alert('Secured session support connected.')">
+                <span class="icon">📞</span>
+                <span>Help Desk</span>
+              </button>
+            </div>
+
+            <!-- Loan summary box -->
+            <div class="mt-4 p-4" style="background: var(--bg-card-alt); border-radius: var(--radius-lg); border: 1px solid var(--border);">
+              <div class="flex justify-between text-sm mb-1">
+                <strong>Home Loan Repayment</strong>
+                <span class="text-mono">₹ 14,35,000 / ₹ 20,000,000</span>
+              </div>
+              <div class="score-bar">
+                <div class="score-bar-fill blue" style="width: 71%;"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
-      <!-- Fund Transfer Form -->
-      <div class="card card-glass mb-4">
-        <h3 class="mb-3">Quick Funds Transfer</h3>
-        
+      <!-- TAB 2: SEND MONEY -->
+      <div id="page-transfer" class="card card-glass hidden" style="max-width: 650px;">
+        <h2 class="mb-2">Fund Transfer Portal</h2>
+        <p class="text-sm text-secondary mb-4">Transfer funds instantly via IMPS, NEFT, or RTGS.</p>
+
         <div class="form-group mb-3">
-          <label class="form-label" for="tx-payee">Payee Name</label>
-          <input type="text" id="tx-payee" class="form-input" placeholder="e.g. Ramesh Kumar" autocomplete="off">
+          <label class="form-label">Transfer Method</label>
+          <select id="tx-method" class="form-input">
+            <option value="IMPS">IMPS (Immediate Transfer)</option>
+            <option value="NEFT">NEFT (National Electronic Fund Transfer)</option>
+            <option value="RTGS">RTGS (Large Value Transfer)</option>
+          </select>
         </div>
 
         <div class="form-group mb-3">
-          <label class="form-label" for="tx-account">Account Number</label>
-          <input type="text" id="tx-account" class="form-input text-mono" placeholder="e.g. 5010023912903" autocomplete="off">
+          <label class="form-label">Select Registered Payee</label>
+          <select id="tx-payee-select" class="form-input">
+            <!-- Loaded dynamically from registry -->
+          </select>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="tx-amount">Transfer Amount (INR)</label>
+          <input type="number" id="tx-amount" class="form-input text-mono" placeholder="₹ Enter amount to transfer..." autocomplete="off">
         </div>
 
         <div class="form-group mb-4">
-          <label class="form-label" for="tx-amount">Amount (INR)</label>
-          <input type="number" id="tx-amount" class="form-input text-mono" placeholder="₹ Enter Amount..." autocomplete="off">
+          <label class="form-label" for="tx-desc">Description / Remarks</label>
+          <input type="text" id="tx-desc" class="form-input" placeholder="e.g., Monthly Rent Payment" autocomplete="off">
         </div>
 
-        <button id="tx-submit" class="btn btn-primary btn-block">Transfer Funds</button>
+        <button id="tx-submit" class="btn btn-primary btn-block">Authorize & Transfer Funds</button>
       </div>
 
-      <!-- Recent Transactions -->
-      <div class="card">
-        <h4 class="mb-3">Recent Transactions</h4>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Details</th>
-              <th>Amount</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody id="transaction-rows">
-            <tr>
-              <td class="text-mono text-xs">Today</td>
-              <td>Electricity Bill Payment</td>
-              <td class="text-mono text-brand fw-600">- ₹ 4,200.00</td>
-              <td><span class="badge badge-green">Paid</span></td>
-            </tr>
-            <tr>
-              <td class="text-mono text-xs">08 Jun</td>
-              <td>Salary Credited</td>
-              <td class="text-mono fw-600" style="color: var(--green);">+ ₹ 95,000.00</td>
-              <td><span class="badge badge-green">Success</span></td>
-            </tr>
-            <tr>
-              <td class="text-mono text-xs">05 Jun</td>
-              <td>Transfer to Asha Sharma</td>
-              <td class="text-mono text-brand fw-600">- ₹ 12,500.00</td>
-              <td><span class="badge badge-green">Success</span></td>
-            </tr>
-          </tbody>
-        </table>
+      <!-- TAB 3: MANAGE PAYEES -->
+      <div id="page-payees" class="flex flex-col gap-6 hidden">
+        <div class="card card-glass" style="max-width: 600px;">
+          <h2 class="mb-2">Add New Payee</h2>
+          <p class="text-sm text-secondary mb-4">Register new accounts for transaction routing.</p>
+
+          <div class="form-group mb-3">
+            <label class="form-label" for="new-payee-name">Payee Account Name</label>
+            <input type="text" id="new-payee-name" class="form-input" placeholder="Enter full name..." autocomplete="off">
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label" for="new-payee-account">Account Number</label>
+            <input type="text" id="new-payee-account" class="form-input text-mono" placeholder="Enter bank account number..." autocomplete="off">
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label" for="new-payee-ifsc">IFSC Code</label>
+            <input type="text" id="new-payee-ifsc" class="form-input text-mono" placeholder="e.g. SBIN0001802" autocomplete="off">
+          </div>
+
+          <div class="form-group mb-4">
+            <label class="form-label" for="new-payee-limit">Maximum Transfer Limit (INR)</label>
+            <input type="number" id="new-payee-limit" class="form-input text-mono" placeholder="e.g. 50000" autocomplete="off">
+          </div>
+
+          <button id="btn-add-payee" class="btn btn-primary btn-block">Register Payee</button>
+        </div>
+
+        <div class="card">
+          <h3 class="mb-3">Registered Payee List</h3>
+          <div class="payee-grid" id="payee-list-container">
+            <!-- Loaded dynamically -->
+          </div>
+        </div>
       </div>
 
-    </div>
-  </main>
+      <!-- TAB 4: ACCOUNT STATEMENTS -->
+      <div id="page-statements" class="flex flex-col gap-4 hidden">
+        <div class="card">
+          <h2 class="mb-1">Detailed Account Statement</h2>
+          <p class="text-sm text-secondary mb-4">Query and search transaction histories.</p>
+
+          <!-- Filter bar -->
+          <div class="statement-filter-bar">
+            <div class="form-group" style="flex: 1; min-width: 200px;">
+              <input type="text" id="stmt-search" class="form-input" placeholder="Search description..." autocomplete="off">
+            </div>
+            <div class="form-group" style="min-width: 150px;">
+              <select id="stmt-filter" class="form-input">
+                <option value="ALL">All Transactions</option>
+                <option value="DEBIT">Debit Entries Only</option>
+                <option value="CREDIT">Credit Entries Only</option>
+              </select>
+            </div>
+            <button id="stmt-download" class="btn btn-secondary">📥 Mock PDF Statement</button>
+          </div>
+
+          <!-- Statements table -->
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Transaction Date</th>
+                <th>Transaction Reference ID</th>
+                <th>Description</th>
+                <th>Debit (₹)</th>
+                <th>Credit (₹)</th>
+                <th>Result</th>
+              </tr>
+            </thead>
+            <tbody id="statements-table-body">
+              <!-- Loaded dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
 
   <!-- ==========================================
-       FLOATING DEMO SIMULATOR WIDGET
+       3. FLOATING DEVELOPER SIMULATOR PANEL
        ========================================== -->
   <aside class="demo-controller" id="demo-widget">
     <div class="demo-ctrl-header" id="demo-widget-toggle">
@@ -332,9 +505,8 @@
       <h5 class="mb-1">Select Persona Mode</h5>
       <p class="text-muted text-xs">Simulates keyboard/mouse events with different biometric signatures.</p>
 
-      <!-- Persona Modes -->
       <button class="sim-mode-btn active" data-persona="owner">
-        <div class="dot-green status-dot"></div>
+        <span class="status-dot dot-green"></span>
         <div>
           <div class="sim-mode-title">Legitimate Owner</div>
           <div class="sim-mode-desc">Standard fluid typing & curved mouse paths.</div>
@@ -342,7 +514,7 @@
       </button>
 
       <button class="sim-mode-btn" data-persona="intruder">
-        <div class="dot-amber status-dot"></div>
+        <span class="status-dot dot-amber"></span>
         <div>
           <div class="sim-mode-title">Human Intruder</div>
           <div class="sim-mode-desc">Hesitant rhythm, slow keys, odd mouse pauses.</div>
@@ -350,14 +522,13 @@
       </button>
 
       <button class="sim-mode-btn" data-persona="bot">
-        <div class="dot-red status-dot"></div>
+        <span class="status-dot dot-red"></span>
         <div>
           <div class="sim-mode-title">Automated Bot Script</div>
           <div class="sim-mode-desc">0ms timings, straight lines, webdriver tags.</div>
         </div>
       </button>
 
-      <!-- Autocomplete button -->
       <div class="live-sdk-status">
         <button id="btn-quick-fill" class="btn btn-secondary btn-sm btn-block">⚡ Quick-Fill Credentials</button>
       </div>
@@ -369,7 +540,7 @@
   </aside>
 
   <!-- ==========================================
-       MODAL OVERLAYS (FREEZE, CHALLENGE, OTP)
+       4. MODAL OVERLAYS (FREEZE, CHALLENGE, OTP)
        ========================================== -->
 
   <!-- Fullscreen Matrix Freeze -->

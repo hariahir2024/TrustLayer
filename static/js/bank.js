@@ -2,14 +2,15 @@
  * BehaviorShield — bank.js
  * Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
  * 
- * Client-side logic for Vishwa Bank Simulator.
- * Integrates with BehaviorShield Telemetry SDK (sdk.js) to sendtiming details.
- * Implements interactive enrollment, login, fund transfer, re-authentication,
- * and a floating developer panel for persona simulations.
+ * Redesigned client-side portal logic for Vishwa Bank NetBanking.
+ * Integrates with BehaviorShield Telemetry SDK (sdk.js) to monitor sessions.
+ * Manages multi-tab routing, persistent local storage databases,
+ * payee registration, transfers, statement searches, and timing presets.
  */
 
 document.addEventListener('DOMContentLoaded', function() {
-    // UI Elements
+    // Auth UI View elements
+    const authContainer = document.getElementById('auth-container');
     const views = {
         username: document.getElementById('username-view'),
         enroll: document.getElementById('enroll-view'),
@@ -17,17 +18,40 @@ document.addEventListener('DOMContentLoaded', function() {
         portal: document.getElementById('portal-view')
     };
 
+    // Dashboard Tabs
+    const tabs = {
+        dashboard: document.getElementById('page-dashboard'),
+        transfer: document.getElementById('page-transfer'),
+        payees: document.getElementById('page-payees'),
+        statements: document.getElementById('page-statements')
+    };
+
+    // Inputs
     const inputs = {
         username: document.getElementById('start-username'),
         enroll: document.getElementById('enroll-input'),
         loginPass: document.getElementById('login-password'),
         challenge: document.getElementById('challenge-input'),
         otp: document.getElementById('otp-input'),
-        txPayee: document.getElementById('tx-payee'),
-        txAccount: document.getElementById('tx-account'),
-        txAmount: document.getElementById('tx-amount')
+        
+        // Redesigned Transfer
+        txMethod: document.getElementById('tx-method'),
+        txPayeeSelect: document.getElementById('tx-payee-select'),
+        txAmount: document.getElementById('tx-amount'),
+        txDesc: document.getElementById('tx-desc'),
+        
+        // Payee Registry
+        payeeName: document.getElementById('new-payee-name'),
+        payeeAccount: document.getElementById('new-payee-account'),
+        payeeIfsc: document.getElementById('new-payee-ifsc'),
+        payeeLimit: document.getElementById('new-payee-limit'),
+
+        // Statements
+        stmtSearch: document.getElementById('stmt-search'),
+        stmtFilter: document.getElementById('stmt-filter')
     };
 
+    // Buttons
     const buttons = {
         nextStep: document.getElementById('btn-next-step'),
         enrollCancel: document.getElementById('enroll-cancel'),
@@ -40,9 +64,12 @@ document.addEventListener('DOMContentLoaded', function() {
         otpSubmit: document.getElementById('otp-submit-btn'),
         otpCancel: document.getElementById('otp-cancel-btn'),
         quickFill: document.getElementById('btn-quick-fill'),
-        freezeReset: document.getElementById('btn-freeze-reset')
+        freezeReset: document.getElementById('btn-freeze-reset'),
+        addPayee: document.getElementById('btn-add-payee'),
+        stmtDownload: document.getElementById('stmt-download')
     };
 
+    // Displays
     const displays = {
         enrollProgressText: document.getElementById('enroll-progress-text'),
         enrollProgressBar: document.getElementById('enroll-progress-bar'),
@@ -57,30 +84,39 @@ document.addEventListener('DOMContentLoaded', function() {
         calibrationSuccess: document.getElementById('calibration-success')
     };
 
+    // Overlay modls
     const overlays = {
         freeze: document.getElementById('freeze-overlay'),
         challenge: document.getElementById('challenge-backdrop'),
         otp: document.getElementById('otp-backdrop')
     };
 
-    // State Variables
+    // State
     let currentUsername = "";
     let sessionId = null;
     let enrollmentSamplesCollected = 0;
     let isMouseCalibrated = false;
-    let selectedPersona = "owner"; // 'owner' | 'intruder' | 'bot'
+    let selectedPersona = "owner"; 
     let currentTransactionPayload = null;
     let currentFocusFieldTs = null;
 
-    // Monitor input fields in dashboard
+    // Local DB variables loaded per user
+    let userPayees = [];
+    let userTransactions = [];
+    let userSavingsBalance = 423891.50;
+
+    // Monitor input elements with SDK
     BehaviorShield.monitorInput(inputs.enroll);
     BehaviorShield.monitorInput(inputs.loginPass);
     BehaviorShield.monitorInput(inputs.challenge);
-    BehaviorShield.monitorInput(inputs.txPayee);
-    BehaviorShield.monitorInput(inputs.txAccount);
     BehaviorShield.monitorInput(inputs.txAmount);
+    BehaviorShield.monitorInput(inputs.txDesc);
+    BehaviorShield.monitorInput(inputs.payeeName);
+    BehaviorShield.monitorInput(inputs.payeeAccount);
+    BehaviorShield.monitorInput(inputs.payeeIfsc);
+    BehaviorShield.monitorInput(inputs.payeeLimit);
 
-    // Track focus timestamps manually for the custom SDK timing
+    // Timing helper focus hooks
     inputs.enroll.addEventListener('focus', () => currentFocusFieldTs = Date.now());
     inputs.loginPass.addEventListener('focus', () => currentFocusFieldTs = Date.now());
     inputs.challenge.addEventListener('focus', () => currentFocusFieldTs = Date.now());
@@ -97,13 +133,211 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // Toggle logout button visibility
         if (viewName === 'portal') {
+            authContainer.classList.add('hidden');
             buttons.logout.style.display = 'inline-flex';
+            switchBankTab('dashboard'); // default to dashboard tab
         } else {
+            authContainer.classList.remove('hidden');
             buttons.logout.style.display = 'none';
         }
     }
+
+    // Tab Switching inside Portal
+    window.switchBankTab = function(tabName) {
+        Object.keys(tabs).forEach(key => {
+            if (key === tabName) {
+                tabs[key].classList.remove('hidden');
+                document.getElementById(`tab-nav-${key}`).classList.add('active');
+            } else {
+                tabs[key].classList.add('hidden');
+                document.getElementById(`tab-nav-${key}`).classList.remove('active');
+            }
+        });
+    };
+
+    // Register click events to nav sidebar items
+    Object.keys(tabs).forEach(key => {
+        document.getElementById(`tab-nav-${key}`).addEventListener('click', () => switchBankTab(key));
+    });
+
+    // ==========================================
+    // LOCAL STORAGE DATABASE MANAGEMENT
+    // ==========================================
+    function loadUserDatabase() {
+        const prefix = `vb_${currentUsername}_`;
+        
+        // Load Balance
+        const savedBalance = localStorage.getItem(`${prefix}balance`);
+        userSavingsBalance = savedBalance ? parseFloat(savedBalance) : 423891.50;
+        updateBalanceDisplays();
+
+        // Load Payees
+        const savedPayees = localStorage.getItem(`${prefix}payees`);
+        if (savedPayees) {
+            userPayees = JSON.parse(savedPayees);
+        } else {
+            // Default initial payees
+            userPayees = [
+                { name: "Ramesh Kumar", account: "5010023912903", ifsc: "SBIN0001802", limit: 100000 },
+                { name: "Asha Sharma", account: "1009023841029", ifsc: "HDFC0000104", limit: 50000 }
+            ];
+            savePayees();
+        }
+        renderPayees();
+
+        // Load Transactions
+        const savedTx = localStorage.getItem(`${prefix}transactions`);
+        if (savedTx) {
+            userTransactions = JSON.parse(savedTx);
+        } else {
+            // Default transactions
+            userTransactions = [
+                { date: "10 Jun", ref: "TXN098412908", desc: "Electricity Bill Payment", type: "DEBIT", debit: 4200.00, credit: 0, status: "Paid" },
+                { date: "08 Jun", ref: "TXN092489104", desc: "Salary Credited", type: "CREDIT", debit: 0, credit: 95000.00, status: "Success" },
+                { date: "05 Jun", ref: "TXN084129841", desc: "Transfer to Asha Sharma", type: "DEBIT", debit: 12500.00, credit: 0, status: "Success" }
+            ];
+            saveTransactions();
+        }
+        renderTransactions();
+    }
+
+    function savePayees() {
+        localStorage.setItem(`vb_${currentUsername}_payees`, JSON.stringify(userPayees));
+    }
+
+    function saveTransactions() {
+        localStorage.setItem(`vb_${currentUsername}_transactions`, JSON.stringify(userTransactions));
+    }
+
+    function saveBalance() {
+        localStorage.setItem(`vb_${currentUsername}_balance`, userSavingsBalance.toString());
+    }
+
+    function updateBalanceDisplays() {
+        const amtStr = `₹ ${userSavingsBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        document.querySelectorAll('.balance-amount').forEach(el => el.textContent = amtStr);
+    }
+
+    // ==========================================
+    // RENDER LAYOUTS
+    // ==========================================
+    function renderPayees() {
+        const container = document.getElementById('payee-list-container');
+        const select = inputs.txPayeeSelect;
+        
+        container.innerHTML = '';
+        select.innerHTML = '<option value="">-- Choose Beneficiary --</option>';
+
+        if (userPayees.length === 0) {
+            container.innerHTML = '<p class="text-muted text-xs p-4">No registered beneficiaries found.</p>';
+            return;
+        }
+
+        userPayees.forEach((p, idx) => {
+            // Append select dropdown option
+            const opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = `${p.name} (A/C: ...${p.account.slice(-4)})`;
+            select.appendChild(opt);
+
+            // Append payee grid card
+            const card = document.createElement('div');
+            card.className = 'payee-card';
+            card.innerHTML = `
+                <div class="payee-card-header">
+                    <div class="flex items-center gap-2">
+                        <div class="payee-avatar">${p.name[0]}</div>
+                        <strong>${p.name}</strong>
+                    </div>
+                    <button class="btn btn-ghost btn-sm text-xs" style="color: var(--red); border-color: rgba(239, 68, 68, 0.2);" onclick="removePayee(${idx})">Remove</button>
+                </div>
+                <div class="text-xs text-secondary mt-1">A/C: <span class="text-mono">${p.account}</span></div>
+                <div class="text-xs text-secondary">IFSC: <span class="text-mono">${p.ifsc}</span></div>
+                <div class="text-xs text-secondary" style="border-top: 1px solid var(--border); padding-top: 0.4rem; margin-top: 0.2rem;">
+                  Limit: <strong class="text-mono">₹${p.limit.toLocaleString('en-IN')}</strong>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    window.removePayee = function(index) {
+        if (confirm("Are you sure you want to remove this payee?")) {
+            userPayees.splice(index, 1);
+            savePayees();
+            renderPayees();
+        }
+    };
+
+    function renderTransactions() {
+        const dashboardTbody = document.getElementById('transaction-rows');
+        const statementsTbody = document.getElementById('statements-table-body');
+        
+        dashboardTbody.innerHTML = '';
+        statementsTbody.innerHTML = '';
+
+        if (userTransactions.length === 0) {
+            dashboardTbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No recent activities.</td></tr>';
+            statementsTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No entries match criteria.</td></tr>';
+            return;
+        }
+
+        // Apply filters for statements view
+        const searchVal = inputs.stmtSearch.value.trim().toLowerCase();
+        const filterVal = inputs.stmtFilter.value;
+
+        // Render dashboard (last 5, unfiltered)
+        userTransactions.slice(0, 5).forEach(tx => {
+            const tr = document.createElement('tr');
+            const amtClass = tx.type === 'DEBIT' ? 'text-brand' : '';
+            const amtSign = tx.type === 'DEBIT' ? '-' : '+';
+            const amtVal = tx.type === 'DEBIT' ? tx.debit : tx.credit;
+
+            tr.innerHTML = `
+                <td class="text-mono text-xs">${tx.date}</td>
+                <td>${tx.desc}</td>
+                <td class="text-mono fw-600 ${amtClass}" style="${tx.type === 'CREDIT' ? 'color: var(--green);' : ''}">${amtSign} ₹ ${amtVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                <td><span class="badge ${tx.status === 'Success' || tx.status === 'Paid' ? 'badge-green' : 'badge-amber'}">${tx.status}</span></td>
+            `;
+            dashboardTbody.appendChild(tr);
+        });
+
+        // Render statements with filter constraints
+        userTransactions.forEach(tx => {
+            // Filter search
+            if (searchVal && !tx.desc.toLowerCase().includes(searchVal)) return;
+
+            // Filter type
+            if (filterVal === 'DEBIT' && tx.type !== 'DEBIT') return;
+            if (filterVal === 'CREDIT' && tx.type !== 'CREDIT') return;
+
+            const tr = document.createElement('tr');
+            
+            const debText = tx.type === 'DEBIT' ? `₹ ${tx.debit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-';
+            const credText = tx.type === 'CREDIT' ? `₹ ${tx.credit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '-';
+            const debStyle = tx.type === 'DEBIT' ? 'color: var(--brand); font-weight: 600;' : '';
+            const credStyle = tx.type === 'CREDIT' ? 'color: var(--green); font-weight: 600;' : '';
+
+            tr.innerHTML = `
+                <td class="text-mono text-xs">${tx.date}</td>
+                <td class="text-mono text-xs">${tx.ref}</td>
+                <td>${tx.desc}</td>
+                <td class="text-mono" style="${debStyle}">${debText}</td>
+                <td class="text-mono" style="${credStyle}">${credText}</td>
+                <td><span class="badge ${tx.status === 'Success' || tx.status === 'Paid' ? 'badge-green' : 'badge-amber'}">${tx.status}</span></td>
+            `;
+            statementsTbody.appendChild(tr);
+        });
+
+        if (statementsTbody.children.length === 0) {
+            statementsTbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No entries match criteria.</td></tr>';
+        }
+    }
+
+    // Attach filter event listeners
+    inputs.stmtSearch.addEventListener('input', renderTransactions);
+    inputs.stmtFilter.addEventListener('change', renderTransactions);
 
     // ==========================================
     // USERNAME GATE / VERIFY ENROLLMENT
@@ -117,7 +351,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         currentUsername = username;
         
-        // Attempt a login call with empty key_events to check if username is enrolled
         try {
             const response = await fetch('/api/login', {
                 method: 'POST',
@@ -135,17 +368,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const data = await response.json();
-            
-            // Clean up old session first if exists
             BehaviorShield.destroy();
 
             if (data.enrolled) {
-                // User is already enrolled. Go to Login view.
                 document.getElementById('login-username-readonly').value = currentUsername;
-                displays.loginMessage.textContent = "Welcome back! Enter your NetBanking passphrase.";
+                displays.loginMessage.textContent = "Enter your NetBanking passphrase.";
                 showView('login');
             } else {
-                // User needs enrollment. Go to Enrollment view.
                 showView('enroll');
                 resetEnrollmentProgress();
             }
@@ -156,7 +385,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ==========================================
-    // ENROLLMENT LOGIC
+    // ENROLLMENT PROGRESS & MOUSE CALIBRATION
     // ==========================================
     function resetEnrollmentProgress() {
         enrollmentSamplesCollected = 0;
@@ -177,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (text !== "SecureAuth@India1") {
                 alert("Passphrase does not match exactly! Please type: SecureAuth@India1");
                 inputs.enroll.value = "";
-                BehaviorShield.extractKeyEvents(); // clear timing buffer
+                BehaviorShield.extractKeyEvents(); 
                 return;
             }
 
@@ -204,7 +433,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (data.complete) {
                     inputs.enroll.disabled = true;
-                    // Show Step 2: Mouse calibration
                     document.getElementById('enroll-mouse-step').classList.remove('hidden');
                     initializeMouseCalibration();
                 }
@@ -217,26 +445,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     buttons.enrollCancel.addEventListener('click', () => showView('username'));
 
-    // Interactive mouse tracing calibration
     function initializeMouseCalibration() {
         const area = document.getElementById('mouse-path-area');
         let inProgress = false;
 
-        area.addEventListener('mouseenter', function() {
-            inProgress = true;
-        });
+        area.addEventListener('mouseenter', function() { inProgress = true; });
+        area.addEventListener('mouseleave', function() { inProgress = false; });
 
-        area.addEventListener('mouseleave', function() {
-            inProgress = false;
-        });
-
-        // When the user moves the mouse inside the canvas, if they sweep left-to-right, we mark it done
         area.addEventListener('mousemove', function(e) {
             if (!inProgress || isMouseCalibrated) return;
             const rect = area.getBoundingClientRect();
             const x = e.clientX - rect.left;
             
-            // If mouse reaches near the end circle (width ~ 520px)
             if (x > 480) {
                 isMouseCalibrated = true;
                 displays.calibrationSuccess.classList.remove('hidden');
@@ -247,13 +467,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     buttons.enrollComplete.addEventListener('click', function() {
-        // Enrollment completed, proceed back to username gate which will now route to login
         alert("Enrollment baseline registered successfully!");
         showView('username');
     });
 
     // ==========================================
-    // LOGIN LOGIC
+    // LOGIN & LAUNCH PORTAL
     // ==========================================
     buttons.loginBack.addEventListener('click', () => showView('username'));
 
@@ -272,11 +491,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Verify username/passphrase for PoC
         if (pass !== "SecureAuth@India1") {
             alert("Invalid credentials. Enter the enrolled passphrase.");
             inputs.loginPass.value = "";
-            BehaviorShield.extractKeyEvents(); // clear timing buffer
+            BehaviorShield.extractKeyEvents(); 
             return;
         }
 
@@ -302,24 +520,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const data = await response.json();
             
-            if (data.is_bot) {
+            if (data.is_bot || data.action === 'FREEZE_SESSION' || data.action === 'FREEZE_AND_ALERT' || data.action === 'SILENT_BLOCK') {
                 showFreezeOverlay();
                 return;
             }
 
-            if (data.action === 'FREEZE_SESSION' || data.action === 'FREEZE_AND_ALERT' || data.action === 'SILENT_BLOCK') {
-                showFreezeOverlay();
-                return;
-            }
-
-            // Successfully logged in!
+            // Authenticated successfully! Load database and init SDK
             sessionId = data.session_id;
             inputs.loginPass.value = "";
+            document.getElementById('hello-user').textContent = currentUsername;
+
+            loadUserDatabase();
             
-            // Initialize Behavioral Telemetry SDK
             BehaviorShield.init(sessionId, currentUsername);
-            
-            // Update Dashboard Risk displays initially
             updateRiskMetrics(data.score, data.band, 30);
             
             showView('portal');
@@ -340,7 +553,60 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ==========================================
-    // HEARTBEAT / SCORING UPDATES
+    // ADD NEW PAYEE LOGIC
+    // ==========================================
+    buttons.addPayee.addEventListener('click', async function() {
+        const name = inputs.payeeName.value.trim();
+        const acc = inputs.payeeAccount.value.trim();
+        const ifsc = inputs.payeeIfsc.value.trim();
+        const limStr = inputs.payeeLimit.value.trim();
+
+        if (!name || !acc || !ifsc || !limStr) {
+            alert("Please fill all payee parameters.");
+            return;
+        }
+
+        // IFSC Validation (Standard Indian Banking format: 4 letters, 0, 6 digits/chars)
+        if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) {
+            alert("Invalid IFSC format. Example: SBIN0001802");
+            return;
+        }
+
+        const limit = parseFloat(limStr);
+
+        // Submit action request to backend scoring
+        await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, action_type: 'add_payee' })
+        });
+
+        // Trigger manual telemetry scoring check
+        await BehaviorShield.forceSubmitScore();
+
+        // Check if session got frozen
+        const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
+        const sessionCheck = await sessionCheckRes.json();
+        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+            showFreezeOverlay();
+            return;
+        }
+
+        // Add payee locally
+        userPayees.push({ name, account: acc, ifsc, limit });
+        savePayees();
+        renderPayees();
+        alert(`Beneficiary ${name} registered successfully!`);
+
+        // Clear fields
+        inputs.payeeName.value = "";
+        inputs.payeeAccount.value = "";
+        inputs.payeeIfsc.value = "";
+        inputs.payeeLimit.value = "";
+    });
+
+    // ==========================================
+    // SCORING LISTENERS (FROM SDK)
     // ==========================================
     window.addEventListener('behaviorshield_update', function(e) {
         const data = e.detail;
@@ -362,7 +628,6 @@ document.addEventListener('DOMContentLoaded', function() {
         displays.liveRiskScore.textContent = score.toFixed(1);
         displays.liveInterval.textContent = interval;
 
-        // Set colors and classes based on band
         displays.liveRiskScore.className = "score-number";
         displays.liveRiskBar.className = "score-bar-fill";
         displays.liveRiskBadge.className = "badge";
@@ -393,7 +658,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ==========================================
-    // SESSION FREEZE
+    // MODAL HANDLERS
     // ==========================================
     function showFreezeOverlay() {
         overlays.freeze.classList.remove('hidden');
@@ -408,9 +673,6 @@ document.addEventListener('DOMContentLoaded', function() {
         showView('username');
     });
 
-    // ==========================================
-    // STEP-UP PASSPHRASE CHALLENGE (AMBER MID)
-    // ==========================================
     function showChallengeModal() {
         overlays.challenge.classList.remove('hidden');
         inputs.challenge.value = "";
@@ -433,7 +695,7 @@ document.addEventListener('DOMContentLoaded', function() {
             displays.challengeError.textContent = "Passphrase does not match exactly!";
             displays.challengeError.classList.remove('hidden');
             inputs.challenge.value = "";
-            BehaviorShield.extractKeyEvents(); // clear
+            BehaviorShield.extractKeyEvents(); 
             return;
         }
 
@@ -475,38 +737,49 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ==========================================
-    // FUND TRANSFER LOGIC (AMBER HIGH / OTP)
+    // AUTHORIZED TRANSFER (AMBER HIGH / OTP)
     // ==========================================
     buttons.txSubmit.addEventListener('click', async function() {
-        const payee = inputs.txPayee.value.trim();
-        const account = inputs.txAccount.value.trim();
+        const payeeIdx = inputs.txPayeeSelect.value;
         const amountStr = inputs.txAmount.value.trim();
+        const desc = inputs.txDesc.value.trim() || "Fund Transfer";
 
-        if (!payee || !account || !amountStr) {
-            alert("Please fill all fund transfer fields.");
+        if (payeeIdx === "" || !amountStr) {
+            alert("Please select a payee beneficiary and enter an amount.");
             return;
         }
 
+        const payeeObj = userPayees[parseInt(payeeIdx)];
         const amount = parseFloat(amountStr);
+
+        if (amount > userSavingsBalance) {
+            alert("Insufficient balance in savings account.");
+            return;
+        }
+
+        if (amount > payeeObj.limit) {
+            alert(`Transfer amount exceeds registered payee transfer limit of ₹${payeeObj.limit.toLocaleString()}`);
+            return;
+        }
 
         currentTransactionPayload = {
             session_id: sessionId,
             action_type: 'transfer',
             amount: amount,
-            description: `Transfer to ${payee}`
+            description: `${inputs.txMethod.value} to ${payeeObj.name}`
         };
 
-        // Notify session action before transaction
+        // Track action
         await fetch('/api/action', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: sessionId, action_type: 'transfer' })
         });
 
-        // Trigger manual SDK telemetry flush before submit
+        // Trigger manual telemetry submit
         await BehaviorShield.forceSubmitScore();
 
-        // Send transaction
+        // Proceed to transfer API check
         sendTransactionRequest();
     });
 
@@ -522,14 +795,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (data.allowed) {
                 if (data.otp_required) {
-                    // Show OTP Verification
                     showOtpModal();
                 } else {
-                    // Allowed directly!
                     processSuccessfulTransaction();
                 }
             } else {
-                // Denied
                 alert(`Transaction Blocked: ${data.message}`);
             }
         } catch (err) {
@@ -557,7 +827,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function submitOtp() {
         const code = inputs.otp.value.trim();
-        // PoC accepts any 6-digit OTP (e.g., 123456)
         if (code.length === 6 && /^\d+$/.test(code)) {
             overlays.otp.classList.add('hidden');
             processSuccessfulTransaction();
@@ -570,28 +839,44 @@ document.addEventListener('DOMContentLoaded', function() {
     function processSuccessfulTransaction() {
         alert("Transaction processed successfully!");
         
-        // Add row to transactions table
-        const tbody = document.getElementById('transaction-rows');
-        const newRow = document.createElement('tr');
-        newRow.innerHTML = `
-            <td class="text-mono text-xs">Today</td>
-            <td>Transfer to ${inputs.txPayee.value}</td>
-            <td class="text-mono text-brand fw-600">- ₹ ${parseFloat(inputs.txAmount.value).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            <td><span class="badge badge-green">Success</span></td>
-        `;
-        tbody.insertBefore(newRow, tbody.firstChild);
+        const payeeObj = userPayees[parseInt(inputs.txPayeeSelect.value)];
+        const amount = parseFloat(inputs.txAmount.value);
+        const method = inputs.txMethod.value;
+        const desc = inputs.txDesc.value.trim() || "Fund Transfer";
 
-        // Deduct balance
-        const balanceEl = document.querySelector('.balance-amount');
-        let currentBalance = parseFloat(balanceEl.textContent.replace('₹', '').replace(/,/g, '').trim());
-        currentBalance -= parseFloat(inputs.txAmount.value);
-        balanceEl.textContent = `₹ ${currentBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        // Create transaction row
+        const newTx = {
+            date: "Today",
+            ref: `TXN${Math.floor(100000000 + Math.random() * 900000000)}`,
+            desc: `${method} transfer to ${payeeObj.name}: ${desc}`,
+            type: "DEBIT",
+            debit: amount,
+            credit: 0,
+            status: "Success"
+        };
+
+        userTransactions.unshift(newTx);
+        saveTransactions();
+        
+        userSavingsBalance -= amount;
+        saveBalance();
+
+        updateBalanceDisplays();
+        renderTransactions();
+        switchBankTab('dashboard');
 
         // Clear fields
-        inputs.txPayee.value = "";
-        inputs.txAccount.value = "";
+        inputs.txPayeeSelect.value = "";
         inputs.txAmount.value = "";
+        inputs.txDesc.value = "";
     }
+
+    // ==========================================
+    // DOWNLOAD STATEMENT SIMULATOR
+    // ==========================================
+    buttons.stmtDownload.addEventListener('click', function() {
+        alert("Statement Generated!\nMock PDF Statement file download initiated: Vishwa_Statement_2026.pdf");
+    });
 
     // ==========================================
     // FLOATING DEVELOPER SIMULATOR PANEL
@@ -605,7 +890,6 @@ document.addEventListener('DOMContentLoaded', function() {
         icon.textContent = widget.classList.contains('collapsed') ? '▲' : '▼';
     });
 
-    // Handle Persona selections
     const simButtons = document.querySelectorAll('.sim-mode-btn');
     simButtons.forEach(btn => {
         btn.addEventListener('click', function() {
@@ -616,9 +900,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Auto fill credentials and trigger typing telemetry simulation
     buttons.quickFill.addEventListener('click', function() {
-        // Determine which screen is active
         const isLoginActive = !views.login.classList.contains('hidden');
         const isEnrollActive = !views.enroll.classList.contains('hidden');
         const isChallengeActive = !overlays.challenge.classList.contains('hidden');
@@ -637,23 +919,17 @@ document.addEventListener('DOMContentLoaded', function() {
         simulateTyping(targetInput, text, selectedPersona);
     });
 
-    /**
-     * Programmatic typing rhythm injector
-     */
     function simulateTyping(inputElement, text, persona) {
         inputElement.value = "";
         inputElement.focus();
         currentFocusFieldTs = Date.now();
 
-        // Clear SDK key buffers
         BehaviorShield.extractKeyEvents();
 
         let index = 0;
-        let runningTimeOffset = 0;
 
         function typeNextChar() {
             if (index >= text.length) {
-                // If it's enrollment or login, press Enter automatically!
                 setTimeout(() => {
                     const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter' });
                     inputElement.dispatchEvent(enterEvent);
@@ -662,9 +938,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const char = text[index];
-            const code = `Key${char.toUpperCase()}`; // approximation for SDK maps
+            const code = `Key${char.toUpperCase()}`;
 
-            // Define timing parameters based on persona
             let dwellTime = 90;
             let flightTime = 120;
 
@@ -679,13 +954,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 flightTime = 1;
             }
 
-            // Simulate keydown
             setTimeout(function() {
-                // Trigger real keydown
                 const downEvent = new KeyboardEvent('keydown', { key: char, code: code });
                 inputElement.dispatchEvent(downEvent);
 
-                // Simulate keyup after dwellTime
                 setTimeout(function() {
                     inputElement.value += char;
                     const upEvent = new KeyboardEvent('keyup', { key: char, code: code });
@@ -698,7 +970,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }, flightTime);
         }
 
-        // Start typing
         typeNextChar();
     }
 });
