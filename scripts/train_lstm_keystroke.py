@@ -30,6 +30,10 @@ import datetime
 import numpy as np
 import pandas as pd
 
+# Force UTF-8 output on Windows (prevents cp1252 UnicodeEncodeError)
+if sys.stdout.encoding != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # ── Path setup ────────────────────────────────────────────────────────────────
 # Allow importing constants.py from project root regardless of where the
 # script is run from.
@@ -92,9 +96,9 @@ N_FEATURES = LSTM_INPUT_SIZE           # 2
 # =============================================================================
 
 def _progress_bar(current: int, total: int, width: int = 28) -> str:
-    """Return a Unicode progress bar string for inline printing."""
+    """Return an ASCII progress bar string for inline printing."""
     filled = int(width * current / max(total, 1))
-    bar    = "█" * filled + "░" * (width - filled)
+    bar    = "#" * filled + "-" * (width - filled)
     pct    = 100 * current / max(total, 1)
     return f"[{bar}] {pct:5.1f}%"
 
@@ -629,8 +633,8 @@ def main():
     n_params = count_parameters(model)
     print(f"\n  Model parameters: {n_params:,}")
     print(f"  Architecture summary:")
-    print(f"    Encoder: LSTM({LSTM_INPUT_SIZE}→{LSTM_HIDDEN_SIZE}, layers={LSTM_NUM_LAYERS}) → Linear({LSTM_HIDDEN_SIZE}→{LSTM_LATENT_DIM})")
-    print(f"    Decoder: Linear({LSTM_LATENT_DIM}→{LSTM_HIDDEN_SIZE}) → LSTM({LSTM_HIDDEN_SIZE}→{LSTM_HIDDEN_SIZE}, layers={LSTM_NUM_LAYERS}) → Linear({LSTM_HIDDEN_SIZE}→{LSTM_INPUT_SIZE})")
+    print(f"    Encoder: LSTM({LSTM_INPUT_SIZE}->{LSTM_HIDDEN_SIZE}, layers={LSTM_NUM_LAYERS}) -> Linear({LSTM_HIDDEN_SIZE}->{LSTM_LATENT_DIM})")
+    print(f"    Decoder: Linear({LSTM_LATENT_DIM}->{LSTM_HIDDEN_SIZE}) -> LSTM({LSTM_HIDDEN_SIZE}->{LSTM_HIDDEN_SIZE}, layers={LSTM_NUM_LAYERS}) -> Linear({LSTM_HIDDEN_SIZE}->{LSTM_INPUT_SIZE})")
 
     # ── Step 4: Optimizer + loss ──────────────────────────────────────────────
     optimizer = torch.optim.Adam(model.parameters(), lr=LSTM_LEARNING_RATE)
@@ -741,7 +745,7 @@ def main():
 
     # ── Step 9: Final summary ─────────────────────────────────────────────────
     print(f"\n{'='*60}")
-    print(f"  ✓  DONE — LSTM Keystroke Model Training Complete")
+    print(f"  [OK] DONE - LSTM Keystroke Model Training Complete")
     print(f"{'='*60}")
     print(f"  Model file  : {MODEL_OUT}")
     print(f"  Metadata    : {METADATA_OUT}")
