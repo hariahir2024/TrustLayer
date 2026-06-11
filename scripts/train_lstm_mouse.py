@@ -139,20 +139,29 @@ def load_balabit_sequences(base_path: str) -> tuple[np.ndarray, dict]:
 
                 xs = df[x_col].values.astype(float)
                 ys = df[y_col].values.astype(float)
-                ts = df[ts_col].values.astype(float)
+                # Convert timestamps to milliseconds (BALABIT client timestamp is in seconds)
+                ts = df[ts_col].values.astype(float) * 1000.0
 
                 # Velocities (px/ms)
                 dists = np.sqrt(np.diff(xs)**2 + np.diff(ys)**2)
                 dts   = np.diff(ts)
-                dts   = np.where(dts == 0, 0.001, dts)  # prevent division by zero
+                
+                # Enforce a minimum time delta of 5ms to prevent division-by-zero or massive outlier jumps
+                dts   = np.where(dts < 5.0, 5.0, dts)
                 vels  = dists / dts
 
                 # Accelerations (px/ms^2)
-                accels = np.abs(np.diff(vels)) / dts[1:] if len(vels) > 1 else np.array([0.0])
+                accels = np.abs(np.diff(vels)) / dts[1:]
 
                 # Match lengths to N-2
                 vels_matched = vels[:-1]
                 
+                # Clip values to reasonable biological limits to ignore sensor jumps/noise
+                # Max mouse velocity clipped to 10 px/ms (10,000 px/sec)
+                # Max mouse acceleration clipped to 2 px/ms^2 (2,000,000 px/sec^2)
+                vels_matched = np.clip(vels_matched, 0.0, 10.0)
+                accels       = np.clip(accels, 0.0, 2.0)
+
                 # Check for NaNs and infs
                 valid_mask = ~(np.isnan(vels_matched) | np.isinf(vels_matched) | np.isnan(accels) | np.isinf(accels))
                 vels_matched = vels_matched[valid_mask]
