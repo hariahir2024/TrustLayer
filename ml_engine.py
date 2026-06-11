@@ -38,6 +38,9 @@ from constants import (
     ENROLLMENT_PASSPHRASE_LENGTH,
     AMBER_LOW_SCORING_INTERVAL_SEC,
     DEFAULT_SCORING_INTERVAL_SEC,
+    LSTM_INPUT_SIZE, LSTM_HIDDEN_SIZE, LSTM_NUM_LAYERS, LSTM_LATENT_DIM,
+    LSTM_SEQ_LEN_KEYSTROKE, LSTM_SEQ_LEN_MOUSE,
+    MODEL_KEYSTROKE_PT, MODEL_MOUSE_PT, MODEL_XGBOOST_PKL, MODEL_METADATA_JSON,
 )
 
 log = logging.getLogger("ml_engine")
@@ -48,6 +51,76 @@ log = logging.getLogger("ml_engine")
 _generic_keystroke_baseline: dict = {}   # {means: {}, stds: {}} from CMU dataset
 _generic_mouse_model: IsolationForest = None  # trained on BALABIT data
 
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+import pickle
+
+# =============================================================================
+# PYTORCH LSTM AUTOENCODER MODEL
+# =============================================================================
+class LSTMAutoencoder(nn.Module):
+    """Sequence-to-sequence LSTM Autoencoder for behavioral modeling."""
+    def __init__(
+        self,
+        input_size:  int = LSTM_INPUT_SIZE,
+        hidden_size: int = LSTM_HIDDEN_SIZE,
+        num_layers:  int = LSTM_NUM_LAYERS,
+        latent_dim:  int = LSTM_LATENT_DIM,
+        seq_len:     int = LSTM_SEQ_LEN_KEYSTROKE,
+        dropout:     float = 0.1,
+    ):
+        super().__init__()
+        self.seq_len     = seq_len
+        self.hidden_size = hidden_size
+        self.num_layers  = num_layers
+        self.latent_dim  = latent_dim
+
+        # Encoder
+        self.encoder_lstm = nn.LSTM(
+            input_size  = input_size,
+            hidden_size = hidden_size,
+            num_layers  = num_layers,
+            batch_first = True,
+            dropout     = dropout if num_layers > 1 else 0.0,
+        )
+        self.encoder_proj = nn.Linear(hidden_size, latent_dim)
+
+        # Decoder
+        self.decoder_proj = nn.Linear(latent_dim, hidden_size)
+        self.decoder_lstm = nn.LSTM(
+            input_size  = hidden_size,
+            hidden_size = hidden_size,
+            num_layers  = num_layers,
+            batch_first = True,
+            dropout     = dropout if num_layers > 1 else 0.0,
+        )
+        self.decoder_out  = nn.Linear(hidden_size, input_size)
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        _, (hidden, _) = self.encoder_lstm(x)
+        latent = self.encoder_proj(hidden[-1])
+        return latent
+
+    def decode(self, latent: torch.Tensor) -> torch.Tensor:
+        expanded = self.decoder_proj(latent)
+        decoder_input = expanded.unsqueeze(1).expand(-1, self.seq_len, -1)
+        output, _ = self.decoder_lstm(decoder_input)
+        reconstruction = self.decoder_out(output)
+        return reconstruction
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        latent = self.encode(x)
+        reconstruction = self.decode(latent)
+        return reconstruction, latent
+
+
+# Global model caches
+_generic_keystroke_lstm: LSTMAutoencoder = None
+_generic_mouse_lstm:     LSTMAutoencoder = None
+_xgb_fusion_model = None
+_ml_metadata:            dict = {}
+
 
 # =============================================================================
 # 1. COLD-START DATA LOADERS
@@ -56,9 +129,11 @@ _generic_mouse_model: IsolationForest = None  # trained on BALABIT data
 def load_generic_baselines() -> None:
     """
     Load datasets at startup and build generic population baselines.
+    Also loads the trained PyTorch LSTM models and XGBoost fusion model.
     Called once when app.py starts. Results cached in module globals.
     """
     global _generic_keystroke_baseline, _generic_mouse_model
+    global _generic_keystroke_lstm, _generic_mouse_lstm, _xgb_fusion_model, _ml_metadata
 
     log.info("Loading generic keystroke baseline from CMU dataset...")
     _generic_keystroke_baseline = _load_cmu_baseline()
@@ -66,7 +141,69 @@ def load_generic_baselines() -> None:
     log.info("Loading generic mouse model from BALABIT dataset...")
     _generic_mouse_model = _load_balabit_model()
 
-    log.info("Generic baselines loaded and ready.")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Load metadata
+    metadata_path = os.path.join(base_dir, MODEL_METADATA_JSON)
+    if os.path.exists(metadata_path):
+        try:
+            with open(metadata_path, "r") as f:
+                _ml_metadata = json.load(f)
+            log.info("Model metadata loaded successfully.")
+        except Exception as e:
+            log.error(f"Failed to load model metadata: {e}")
+
+    # 2. Load pre-trained Keystroke LSTM Autoencoder
+    keystroke_pt_path = os.path.join(base_dir, MODEL_KEYSTROKE_PT)
+    if os.path.exists(keystroke_pt_path):
+        try:
+            checkpoint = torch.load(keystroke_pt_path, map_location=torch.device("cpu"))
+            cfg = checkpoint["model_config"]
+            _generic_keystroke_lstm = LSTMAutoencoder(
+                input_size  = cfg["input_size"],
+                hidden_size = cfg["hidden_size"],
+                num_layers  = cfg["num_layers"],
+                latent_dim  = cfg["latent_dim"],
+                seq_len     = cfg["seq_len"],
+                dropout     = cfg["dropout"],
+            )
+            _generic_keystroke_lstm.load_state_dict(checkpoint["model_state_dict"])
+            _generic_keystroke_lstm.eval()
+            log.info("Generic LSTM Keystroke model loaded successfully.")
+        except Exception as e:
+            log.error(f"Failed to load generic LSTM keystroke model: {e}")
+
+    # 3. Load pre-trained Mouse LSTM Autoencoder
+    mouse_pt_path = os.path.join(base_dir, MODEL_MOUSE_PT)
+    if os.path.exists(mouse_pt_path):
+        try:
+            checkpoint = torch.load(mouse_pt_path, map_location=torch.device("cpu"))
+            cfg = checkpoint["model_config"]
+            _generic_mouse_lstm = LSTMAutoencoder(
+                input_size  = cfg["input_size"],
+                hidden_size = cfg["hidden_size"],
+                num_layers  = cfg["num_layers"],
+                latent_dim  = cfg["latent_dim"],
+                seq_len     = cfg["seq_len"],
+                dropout     = cfg["dropout"],
+            )
+            _generic_mouse_lstm.load_state_dict(checkpoint["model_state_dict"])
+            _generic_mouse_lstm.eval()
+            log.info("Generic LSTM Mouse model loaded successfully.")
+        except Exception as e:
+            log.error(f"Failed to load generic LSTM mouse model: {e}")
+
+    # 4. Load XGBoost Fusion Classifier
+    xgb_path = os.path.join(base_dir, MODEL_XGBOOST_PKL)
+    if os.path.exists(xgb_path):
+        try:
+            with open(xgb_path, "rb") as f:
+                _xgb_fusion_model = pickle.load(f)
+            log.info("XGBoost Fusion model loaded successfully.")
+        except Exception as e:
+            log.error(f"Failed to load XGBoost Fusion model: {e}")
+
+    log.info("Generic baselines and deep models loaded and ready.")
 
 
 def _load_cmu_baseline() -> dict:
@@ -555,6 +692,99 @@ def extract_metadata_features(session: dict, device_fp_enrolled: str | None) -> 
 # 3. ENROLLMENT ENGINE
 # =============================================================================
 
+def _extract_keystroke_sequence(key_events: list) -> np.ndarray | None:
+    """
+    Extract a sequence of shape (11, 2) [hold_ms, flight_ms] for positions 1 to 11.
+    """
+    if not key_events:
+        return None
+    
+    downs = {}
+    ups = {}
+    for ev in key_events:
+        pos = ev.get("position", 0)
+        ts = ev.get("timestamp", 0)
+        typ = ev.get("event", "")
+        if pos < 1 or pos > 11:
+            continue
+        if typ == "down":
+            downs[pos] = ts
+        elif typ == "up":
+            ups[pos] = ts
+            
+    seq = np.zeros((11, 2), dtype=np.float32)
+    
+    default_hold = 100.0
+    default_flight = 150.0
+    
+    if _ml_metadata and "keystroke_model" in _ml_metadata:
+        norm = _ml_metadata["keystroke_model"].get("normalization", {})
+        default_hold = norm.get("hold_mean", default_hold)
+        default_flight = norm.get("flight_mean", default_flight)
+        
+    for p in range(1, 12):
+        i = p - 1
+        if p in downs and p in ups and ups[p] > downs[p]:
+            seq[i, 0] = ups[p] - downs[p]
+        else:
+            seq[i, 0] = default_hold
+            
+        if p < 11:
+            nxt = p + 1
+            if p in ups and nxt in downs:
+                seq[i, 1] = downs[nxt] - ups[p]
+            else:
+                seq[i, 1] = default_flight
+        else:
+            seq[i, 1] = 0.0
+            
+    return seq
+
+
+def _train_individual_keystroke_lstm(username: str) -> None:
+    """
+    Fine-tune the generic keystroke LSTM autoencoder on the user's enrollment sequences.
+    """
+    user = db.get_user(username)
+    if not user or not user.get("enrollment_sequences"):
+        return
+        
+    sequences = np.array(user["enrollment_sequences"], dtype=np.float32)
+    
+    if _ml_metadata and "keystroke_model" in _ml_metadata:
+        norm = _ml_metadata["keystroke_model"]["normalization"]
+        h_mean, h_std = norm["hold_mean"], norm["hold_std"]
+        f_mean, f_std = norm["flight_mean"], norm["flight_std"]
+        sequences[:, :, 0] = (sequences[:, :, 0] - h_mean) / h_std
+        sequences[:, :, 1] = (sequences[:, :, 1] - f_mean) / f_std
+        
+    model = LSTMAutoencoder(
+        input_size=LSTM_INPUT_SIZE,
+        hidden_size=LSTM_HIDDEN_SIZE,
+        num_layers=LSTM_NUM_LAYERS,
+        latent_dim=LSTM_LATENT_DIM,
+        seq_len=LSTM_SEQ_LEN_KEYSTROKE,
+    )
+    if _generic_keystroke_lstm is not None:
+        model.load_state_dict(_generic_keystroke_lstm.state_dict())
+        
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    criterion = nn.MSELoss()
+    
+    x_tensor = torch.tensor(sequences, dtype=torch.float32)
+    for epoch in range(15):
+        optimizer.zero_grad()
+        recon, _ = model(x_tensor)
+        loss = criterion(recon, x_tensor)
+        loss.backward()
+        optimizer.step()
+        
+    model.eval()
+    db.save_keystroke_lstm(username, model)
+    log.info(f"Individual keystroke LSTM fine-tuned and saved for {username}.")
+
+
 def process_enrollment_sample(username: str, key_events: list,
                                field_focus_ts: float = None) -> dict:
     """
@@ -573,10 +803,20 @@ def process_enrollment_sample(username: str, key_events: list,
     if not db.user_exists(username):
         db.create_user(username)
 
+    # Store raw sequence for LSTM training
+    seq = _extract_keystroke_sequence(key_events)
+    if seq is not None:
+        db.get_user(username)["enrollment_sequences"].append(seq)
+
     count = db.add_enrollment_sample(username, features)
 
     if count >= ENROLLMENT_REQUIRED_SAMPLES:
         _build_user_keystroke_baseline(username)
+        try:
+            _train_individual_keystroke_lstm(username)
+        except Exception as e:
+            log.error(f"Failed to train individual keystroke LSTM: {e}")
+            
         return {
             "count":    count,
             "complete": True,
@@ -627,7 +867,109 @@ def _build_user_keystroke_baseline(username: str) -> None:
              f"flight={means.get('mean_flight_time', 0):.1f}ms")
 
 
-def add_mouse_training_sample(username: str, mouse_features: dict) -> None:
+def _extract_mouse_sequences(mouse_samples: list) -> list[np.ndarray]:
+    """
+    Extract multiple sequences of shape (50, 2) from raw mouse events.
+    Returns a list of sequence arrays.
+    """
+    if not mouse_samples:
+        return []
+        
+    moves = [s for s in mouse_samples if s.get("event") == "move"]
+    if len(moves) < 52:
+        return []
+        
+    moves_sorted = sorted(moves, key=lambda s: s["timestamp"])
+    xs = np.array([m["x"] for m in moves_sorted], dtype=float)
+    ys = np.array([m["y"] for m in moves_sorted], dtype=float)
+    ts = np.array([m["timestamp"] for m in moves_sorted], dtype=float)
+    
+    # Velocities (px/ms)
+    dists = np.sqrt(np.diff(xs)**2 + np.diff(ys)**2)
+    dts   = np.diff(ts)
+    dts   = np.where(dts < 5.0, 5.0, dts)
+    vels  = dists / dts
+    
+    # Accelerations (px/ms^2)
+    accels = np.abs(np.diff(vels)) / dts[1:]
+    
+    # Match lengths to N-2
+    vels_matched = vels[:-1]
+    
+    # Clip outliers
+    vels_matched = np.clip(vels_matched, 0.0, 10.0)
+    accels       = np.clip(accels, 0.0, 2.0)
+    
+    features = np.column_stack((vels_matched, accels))
+    
+    seq_len = 50
+    step = 25
+    sequences = []
+    n_points = len(features)
+    for start in range(0, n_points - seq_len + 1, step):
+        window = features[start:start+seq_len]
+        sequences.append(window)
+        
+    return sequences
+
+
+def _train_individual_mouse_lstm(username: str) -> None:
+    """
+    Fine-tune the generic mouse LSTM autoencoder on the user's collected mouse sequences.
+    """
+    user = db.get_user(username)
+    if not user or not user.get("mouse_training_sequences"):
+        return
+        
+    # Combine all sequences from their session history
+    all_seqs = []
+    for seq_list in user["mouse_training_sequences"]:
+        all_seqs.extend(seq_list)
+        
+    if len(all_seqs) < 10:
+        return
+        
+    sequences = np.array(all_seqs, dtype=np.float32)
+    
+    if _ml_metadata and "mouse_model" in _ml_metadata:
+        norm = _ml_metadata["mouse_model"]["normalization"]
+        v_mean, v_std = norm["velocity_mean"], norm["velocity_std"]
+        a_mean, a_std = norm["acceleration_mean"], norm["acceleration_std"]
+        sequences[:, :, 0] = (sequences[:, :, 0] - v_mean) / v_std
+        sequences[:, :, 1] = (sequences[:, :, 1] - a_mean) / a_std
+        
+    model = LSTMAutoencoder(
+        input_size=LSTM_INPUT_SIZE,
+        hidden_size=LSTM_HIDDEN_SIZE,
+        num_layers=LSTM_NUM_LAYERS,
+        latent_dim=LSTM_LATENT_DIM,
+        seq_len=LSTM_SEQ_LEN_MOUSE,
+    )
+    if _generic_mouse_lstm is not None:
+        model.load_state_dict(_generic_mouse_lstm.state_dict())
+        
+    model.train()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    criterion = nn.MSELoss()
+    
+    x_tensor = torch.tensor(sequences, dtype=torch.float32)
+    dataset = TensorDataset(x_tensor)
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+    
+    for epoch in range(5):
+        for batch_x, in loader:
+            optimizer.zero_grad()
+            recon, _ = model(batch_x)
+            loss = criterion(recon, batch_x)
+            loss.backward()
+            optimizer.step()
+            
+    model.eval()
+    db.save_mouse_lstm(username, model)
+    log.info(f"Individual mouse LSTM fine-tuned and saved for {username} on {len(sequences)} sequences.")
+
+
+def add_mouse_training_sample(username: str, mouse_features: dict, mouse_samples: list = None) -> None:
     """
     Add a mouse feature vector to the user's training data.
     Once 10+ samples collected, train individual Isolation Forest.
@@ -640,9 +982,19 @@ def add_mouse_training_sample(username: str, mouse_features: dict) -> None:
         vec = _mouse_features_to_vector(mouse_features)
         user["mouse_training_vectors"].append(vec)
 
+        # Also store raw mouse sequences for LSTM training
+        if mouse_samples:
+            seqs = _extract_mouse_sequences(mouse_samples)
+            if seqs:
+                user["mouse_training_sequences"].append(seqs)
+
         # Train individual model once we have enough sessions
         if len(user["mouse_training_vectors"]) >= 10:
             _train_individual_mouse_model(username)
+            try:
+                _train_individual_mouse_lstm(username)
+            except Exception as e:
+                log.error(f"Failed to train individual mouse LSTM: {e}")
 
 
 def _train_individual_mouse_model(username: str) -> None:
@@ -673,10 +1025,10 @@ def _z_to_risk(z: float) -> float:
     return min(abs(z) / 4.0 * 100.0, 100.0)
 
 
-def score_keystrokes(username: str, features: dict) -> tuple[float, list]:
+def score_keystrokes(username: str, features: dict, key_events: list = None) -> tuple[float, list]:
     """
-    Z-Score profiler for keystroke features.
-    Compares current session features against user's enrolled baseline.
+    Z-Score and LSTM Autoencoder scorer for keystroke features.
+    Compares current session features against user's enrolled baseline/model.
 
     Returns:
         (category_score: float 0-100,
@@ -685,7 +1037,71 @@ def score_keystrokes(username: str, features: dict) -> tuple[float, list]:
     if not features:
         return 50.0, []   # neutral score if no keystroke data
 
-    # Choose baseline: individual if enrolled, generic otherwise
+    # Choose model: individual if enrolled/trained, generic otherwise
+    lstm_model = db.get_keystroke_lstm(username) or _generic_keystroke_lstm
+    seq = _extract_keystroke_sequence(key_events) if key_events else None
+
+    use_lstm = (lstm_model is not None) and (seq is not None) and (_ml_metadata is not None) and ("keystroke_model" in _ml_metadata)
+
+    if use_lstm:
+        try:
+            # Normalize sequence using training stats
+            norm = _ml_metadata["keystroke_model"]["normalization"]
+            h_mean, h_std = norm["hold_mean"], norm["hold_std"]
+            f_mean, f_std = norm["flight_mean"], norm["flight_std"]
+
+            seq_norm = seq.copy()
+            seq_norm[:, 0] = (seq_norm[:, 0] - h_mean) / h_std
+            seq_norm[:, 1] = (seq_norm[:, 1] - f_mean) / f_std
+
+            # Predict MSE
+            x_tensor = torch.tensor([seq_norm], dtype=torch.float32)
+            with torch.no_grad():
+                recon, _ = lstm_model(x_tensor)
+                mse = float(((recon - x_tensor) ** 2).mean().item())
+
+            # Map reconstruction error to 0-100 score relative to anomaly threshold
+            threshold = _ml_metadata["keystroke_model"]["performance"]["anomaly_threshold"]
+            # If MSE = threshold -> score is 50.0. Scale linearly.
+            keystroke_score = min(100.0, (mse / max(threshold, 1e-6)) * 50.0)
+
+            # Generate explainability breakdown using z-scores for UI dashboard clarity
+            baseline = db.get_keystroke_baseline(username) or _generic_keystroke_baseline
+            means = baseline.get("means", {})
+            stds  = baseline.get("stds", {})
+
+            breakdown = []
+            if means:
+                for feat_name in KEYSTROKE_FEATURES:
+                    if feat_name not in features:
+                        continue
+                    mean   = means.get(feat_name, 0.0)
+                    std    = stds.get(feat_name,  FEATURES[feat_name]["min_std_floor"])
+                    floor  = FEATURES[feat_name]["min_std_floor"]
+                    weight = FEATURES[feat_name]["weight"]
+                    safe_std = max(std, floor)
+
+                    z = (features[feat_name] - mean) / safe_std
+                    # Scale weight contribution according to the overall LSTM score
+                    feat_risk = _z_to_risk(z) * weight
+
+                    breakdown.append({
+                        "feature":      feat_name,
+                        "label":        FEATURES[feat_name]["description"],
+                        "observed":     round(features[feat_name], 2),
+                        "baseline_mean": round(mean, 2),
+                        "z_score":      round(z, 2),
+                        "contribution": round(feat_risk * (keystroke_score / 50.0 if keystroke_score > 0 else 1.0), 2),
+                        "unit":         FEATURES[feat_name]["unit"],
+                    })
+                breakdown.sort(key=lambda x: x["contribution"], reverse=True)
+
+            return round(keystroke_score, 1), breakdown
+
+        except Exception as e:
+            log.error(f"Error in LSTM keystroke scoring: {e}. Falling back to Z-score.")
+
+    # --- Fallback to Z-Score Profiler ---
     baseline = db.get_keystroke_baseline(username)
     if not baseline:
         baseline = _generic_keystroke_baseline
@@ -736,9 +1152,9 @@ def score_keystrokes(username: str, features: dict) -> tuple[float, list]:
     return round(keystroke_score, 1), breakdown
 
 
-def score_mouse(username: str, features: dict) -> tuple[float, list]:
+def score_mouse(username: str, features: dict, mouse_samples: list = None) -> tuple[float, list]:
     """
-    Isolation Forest anomaly scorer for mouse features.
+    Isolation Forest and LSTM Autoencoder anomaly scorer for mouse features.
 
     Returns:
         (category_score: float 0-100,
@@ -747,6 +1163,59 @@ def score_mouse(username: str, features: dict) -> tuple[float, list]:
     if not features:
         return 25.0, []   # neutral-low score if no mouse data
 
+    # Try LSTM scoring if model, samples and metadata are available
+    lstm_model = db.get_mouse_lstm(username) or _generic_mouse_lstm
+    seqs = _extract_mouse_sequences(mouse_samples) if mouse_samples else []
+
+    use_lstm = (lstm_model is not None) and (len(seqs) > 0) and (_ml_metadata is not None) and ("mouse_model" in _ml_metadata)
+
+    if use_lstm:
+        try:
+            # Normalize sequences using training stats
+            norm = _ml_metadata["mouse_model"]["normalization"]
+            v_mean, v_std = norm["velocity_mean"], norm["velocity_std"]
+            a_mean, a_std = norm["acceleration_mean"], norm["acceleration_std"]
+
+            normalized_seqs = []
+            for s in seqs:
+                s_norm = s.copy()
+                s_norm[:, 0] = (s_norm[:, 0] - v_mean) / v_std
+                s_norm[:, 1] = (s_norm[:, 1] - a_mean) / a_std
+                normalized_seqs.append(s_norm)
+
+            # Predict MSE for all sequences
+            x_tensor = torch.tensor(np.array(normalized_seqs), dtype=torch.float32)
+            with torch.no_grad():
+                recon, _ = lstm_model(x_tensor)
+                per_sample_mse = ((recon - x_tensor) ** 2).mean(dim=(1, 2))
+                mean_mse = float(per_sample_mse.mean().item())
+
+            # Map reconstruction error to 0-100 score relative to anomaly threshold
+            threshold = _ml_metadata["mouse_model"]["performance"]["anomaly_threshold"]
+            # If MSE = threshold -> score is 50.0. Scale linearly.
+            mouse_score = min(100.0, (mean_mse / max(threshold, 1e-6)) * 50.0)
+
+            # Generate explainability breakdown using the feature vectors for UI display
+            vec = _mouse_features_to_vector(features)
+            mouse_feature_names = list(MOUSE_FEATURES)
+            breakdown = []
+            for i, feat_name in enumerate(mouse_feature_names):
+                if i < len(vec):
+                    breakdown.append({
+                        "feature":      feat_name,
+                        "label":        FEATURES[feat_name]["description"],
+                        "observed":     round(vec[i], 4),
+                        "contribution": round(FEATURES[feat_name]["weight"] * mouse_score, 2),
+                        "unit":         FEATURES[feat_name]["unit"],
+                    })
+            breakdown.sort(key=lambda x: x["contribution"], reverse=True)
+
+            return round(mouse_score, 1), breakdown
+
+        except Exception as e:
+            log.error(f"Error in LSTM mouse scoring: {e}. Falling back to Isolation Forest.")
+
+    # --- Fallback to Isolation Forest ---
     vec = _mouse_features_to_vector(features)
 
     # Use individual model if available, else generic
@@ -912,19 +1381,39 @@ def fuse_scores(
     k_breakdown:     list,
     m_breakdown:     list,
     md_breakdown:    list,
+    username:        str = None,
+    metadata_features: dict = None,
 ) -> dict:
     """
     Combine three category scores into a single unified risk score (0-100).
-    Weights: Keystroke=0.40, Mouse=0.35, Metadata=0.25.
+    Uses XGBoost fusion classifier if available, else falls back to weighted sum.
     Produces SHAP-lite top-N feature breakdown.
     """
-    weights = CATEGORY_WEIGHTS
-    final_score = (
-        keystroke_score * weights["KEYSTROKE"] +
-        mouse_score     * weights["MOUSE"]     +
-        metadata_score  * weights["METADATA"]
-    )
-    final_score = round(min(final_score, 100.0), 1)
+    use_xgb = (_xgb_fusion_model is not None) and (metadata_features is not None)
+
+    if use_xgb:
+        try:
+            device_match = 1 if metadata_features.get("device_match", True) else 0
+            time_of_day_risk = 1 if metadata_features.get("time_of_day_risk", 0.0) > 0.0 else 0
+            is_enrolled = 1 if (username and db.is_enrolled(username)) else 0
+
+            vector = [keystroke_score, mouse_score, metadata_score, device_match, time_of_day_risk, is_enrolled]
+
+            prob_fraud = float(_xgb_fusion_model.predict_proba([vector])[0][1])
+            final_score = round(prob_fraud * 100.0, 1)
+        except Exception as e:
+            log.error(f"Error in XGBoost fusion scoring: {e}. Falling back to weighted sum.")
+            use_xgb = False
+
+    if not use_xgb:
+        weights = CATEGORY_WEIGHTS
+        final_score = (
+            keystroke_score * weights["KEYSTROKE"] +
+            mouse_score     * weights["MOUSE"]     +
+            metadata_score  * weights["METADATA"]
+        )
+        final_score = round(min(final_score, 100.0), 1)
+
     band = get_score_band(final_score)
 
     # Merge all breakdowns for SHAP-lite top-N
@@ -1103,14 +1592,16 @@ def score_session(
     )
 
     # ── Step 3: Category scoring ──────────────────────────────────
-    keystroke_score, k_breakdown = score_keystrokes(username, keystroke_features or {})
-    mouse_score, m_breakdown     = score_mouse(username, mouse_features or {})
+    keystroke_score, k_breakdown = score_keystrokes(username, keystroke_features or {}, key_events)
+    mouse_score, m_breakdown     = score_mouse(username, mouse_features or {}, mouse_samples)
     metadata_score, md_breakdown = score_metadata(username, metadata_features)
 
     # ── Step 4: Risk fusion ───────────────────────────────────────
     result = fuse_scores(
         keystroke_score, mouse_score, metadata_score,
         k_breakdown, m_breakdown, md_breakdown,
+        username = username,
+        metadata_features = metadata_features,
     )
 
     final_score = result["final_score"]
@@ -1154,7 +1645,7 @@ def score_session(
 
     # Add mouse features to user's training data
     if mouse_features:
-        add_mouse_training_sample(username, mouse_features)
+        add_mouse_training_sample(username, mouse_features, mouse_samples)
 
     return {
         **result,
