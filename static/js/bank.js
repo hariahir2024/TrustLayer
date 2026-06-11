@@ -2,7 +2,7 @@
  * BehaviorShield — bank.js
  * Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
  * 
- * Redesigned client-side portal logic for Vishwa Bank NetBanking.
+ * Redesigned client-side portal logic for Bharat Suraksha Bank NetBanking.
  * Integrates with BehaviorShield Telemetry SDK (sdk.js) to monitor sessions.
  * Manages multi-tab routing, persistent local storage databases,
  * payee registration, transfers, statement searches, and timing presets.
@@ -461,7 +461,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 isMouseCalibrated = true;
                 displays.calibrationSuccess.classList.remove('hidden');
                 buttons.enrollComplete.disabled = false;
-                console.log("[Vishwa Bank] Mouse calibration complete.");
+                console.log("[BSB] Mouse calibration complete.");
             }
         });
     }
@@ -536,7 +536,7 @@ document.addEventListener('DOMContentLoaded', function() {
             updateRiskMetrics(data.score, data.band, 30);
             
             showView('portal');
-            console.log("[Vishwa Bank] Logged in successfully. Session:", sessionId);
+            console.log("[BSB] Logged in successfully. Session:", sessionId);
             
         } catch (err) {
             console.error("Login Error:", err);
@@ -610,17 +610,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     window.addEventListener('behaviorshield_update', function(e) {
         const data = e.detail;
-        console.log("[Vishwa Bank] Score updated:", data);
+        console.log("[BSB] Score updated:", data);
         updateRiskMetrics(data.score, data.band, data.scoring_interval);
     });
 
     window.addEventListener('behaviorshield_freeze', function(e) {
-        console.warn("[Vishwa Bank] Session Frozen event received!");
+        console.warn("[BSB] Session Frozen event received!");
         showFreezeOverlay();
     });
 
     window.addEventListener('behaviorshield_challenge', function(e) {
-        console.warn("[Vishwa Bank] Step-up challenge requested!");
+        console.warn("[BSB] Step-up challenge requested!");
         showChallengeModal();
     });
 

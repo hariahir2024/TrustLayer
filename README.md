@@ -34,14 +34,14 @@ adventurous-pythagoras/ (Workspace Repository)
 │
 └── static/                 ← Frontend Client Assets
     ├── index.html          ← Landing page with technical architecture layouts
-    ├── bank.html           ← "Vishwa Bank" internet banking portal simulator
+    ├── bank.html           ← "Bharat Suraksha Bank" internet banking portal simulator
     ├── dashboard.html      ← BehaviorShield Security Operations Center (SOC) dashboard
     │
     ├── css/
     │   └── style.css       ← Premium dark-mode design system & overlays
     └── js/
         ├── sdk.js          ← Silent biometric telemetry collector SDK
-        ├── bank.js         ← Vishwa Bank controller, form validations, & simulator
+        ├── bank.js         ← Bharat Suraksha Bank controller, form validations, & simulator
         └── dashboard.js    ← WebSocket feed receiver, Chart.js, & analyst controls
 ```
 
@@ -62,7 +62,7 @@ adventurous-pythagoras/ (Workspace Repository)
 
 3. **Access the Portal**:
    - Open your browser to `http://localhost:8080/` to view the launcher landing page.
-   - Click **Vishwa Bank Simulator** to start a session.
+   - Click **Bharat Suraksha Bank Simulator** to start a session.
    - Click **Security Operations Center** to open the live analyst monitoring dashboard.
 
 ---
@@ -70,10 +70,10 @@ adventurous-pythagoras/ (Workspace Repository)
 ## Step-by-Step Demo Walkthrough
 
 ### 1. Silent Enrollment
-1. Open **Vishwa Bank** (`http://localhost:8080/bank`) and enter a new username (e.g., `solaris_tester`). Click **Continue**.
+1. Open **Bharat Suraksha Bank** (`http://localhost:8080/bank`) and enter a new username (e.g., `solaris_tester`). Click **Continue**.
 2. Because the username is unregistered, you will see the **Enrollment Wizard**.
 3. Under the floating **Demo Controller** (bottom right), select the **Legitimate Owner** persona.
-4. Click **⚡ Quick-Fill Credentials** 5 times. The simulator programmatically types the passphrase `SecureAuth@India1` with natural human variations.
+4. Click **⚡ Quick-Fill Credentials** 5 times. The simulator programmatically types the enrollment passphrase with natural human timing variations.
 5. Sweep your mouse pointer along the curved line from **START** to **END** to calibrate your mouse profile.
 6. Click **Complete Enrollment**. The account profile is built and stored!
 

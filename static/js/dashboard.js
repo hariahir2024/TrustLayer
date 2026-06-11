@@ -574,7 +574,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderGlobalLogs(logs) {
         elements.globalLogFeed.innerHTML = '';
         if (logs.length === 0) {
-            elements.globalLogFeed.innerHTML = '<p class="text-center text-muted p-4">Awaiting security events from Vishwa Bank...</p>';
+            elements.globalLogFeed.innerHTML = '<p class="text-center text-muted p-4">Awaiting security events from Bharat Suraksha Bank...</p>';
             return;
         }
 
