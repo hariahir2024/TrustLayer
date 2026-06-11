@@ -55,6 +55,8 @@ def create_user(username: str) -> dict:
         "enrolled":               False,           # True once baseline is built
         "enrollment_count":       0,               # number of passphrase samples collected
         "enrollment_samples":     [],              # raw keystroke feature dicts (one per attempt)
+        "enrollment_sequences":   [],              # raw keystroke sequences (N, 11, 2)
+        "mouse_training_sequences": [],            # raw mouse sequences lists
 
         # Keystroke behavioral baseline (built after ENROLLMENT_REQUIRED_SAMPLES)
         "keystroke_baseline": {
@@ -65,6 +67,8 @@ def create_user(username: str) -> dict:
         # Mouse model (fitted Isolation Forest — stored as sklearn object)
         "mouse_model":            None,
         "mouse_training_vectors": [],              # raw mouse feature dicts for training
+        "keystroke_lstm":         None,            # fitted keystroke LSTM autoencoder module
+        "mouse_lstm":             None,            # fitted mouse LSTM autoencoder module
 
         # Device profile
         "device_fingerprint":     None,            # hash of enrolled device signature
@@ -156,6 +160,30 @@ def get_device_fingerprint(username: str) -> Optional[str]:
     """Return the enrolled device fingerprint hash."""
     user = _users.get(username)
     return user["device_fingerprint"] if user else None
+
+
+def save_keystroke_lstm(username: str, model) -> None:
+    """Save the fitted keystroke LSTM autoencoder for a user."""
+    if username in _users:
+        _users[username]["keystroke_lstm"] = model
+
+
+def get_keystroke_lstm(username: str):
+    """Return the user's fitted keystroke LSTM autoencoder, or None."""
+    user = _users.get(username)
+    return user["keystroke_lstm"] if user else None
+
+
+def save_mouse_lstm(username: str, model) -> None:
+    """Save the fitted mouse LSTM autoencoder for a user."""
+    if username in _users:
+        _users[username]["mouse_lstm"] = model
+
+
+def get_mouse_lstm(username: str):
+    """Return the user's fitted mouse LSTM autoencoder, or None."""
+    user = _users.get(username)
+    return user["mouse_lstm"] if user else None
 
 
 def increment_user_session_count(username: str) -> None:
