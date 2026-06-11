@@ -1056,7 +1056,7 @@ def score_keystrokes(username: str, features: dict, key_events: list = None) -> 
             seq_norm[:, 1] = (seq_norm[:, 1] - f_mean) / f_std
 
             # Predict MSE
-            x_tensor = torch.tensor([seq_norm], dtype=torch.float32)
+            x_tensor = torch.tensor(np.array([seq_norm]), dtype=torch.float32)
             with torch.no_grad():
                 recon, _ = lstm_model(x_tensor)
                 mse = float(((recon - x_tensor) ** 2).mean().item())
