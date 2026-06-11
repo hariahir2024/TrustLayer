@@ -594,3 +594,41 @@ SYSTEM_VERSION = "1.0.0-poc"
 BANK_NAME      = "Bharat Suraksha Bank"
 TEAM_NAME      = "SOLARIS"
 HACKATHON      = "Cyber Security Hackathon 2026 — MNNIT Allahabad"
+
+
+# -----------------------------------------------------------------------------
+# LSTM AUTOENCODER — Training Hyperparameters
+# Used by: scripts/train_lstm_keystroke.py, scripts/train_lstm_mouse.py
+#          ml_engine.py (inference)
+# Tuned for RTX 3050 6GB VRAM — safe to increase if you have more headroom.
+# -----------------------------------------------------------------------------
+
+# Architecture
+LSTM_INPUT_SIZE  = 2     # features per timestep: [hold_time_ms, flight_time_ms]
+LSTM_HIDDEN_SIZE = 128   # hidden units per LSTM layer (64 = safe 4GB, 128 = safe 6GB)
+LSTM_NUM_LAYERS  = 2     # encoder and decoder depth
+LSTM_LATENT_DIM  = 16    # bottleneck latent vector dimension
+
+# Sequence dimensions
+LSTM_SEQ_LEN_KEYSTROKE = 11   # CMU dataset: 11 keystrokes per password rep
+LSTM_SEQ_LEN_MOUSE     = 50   # BALABIT: 50 consecutive mouse move events per window
+
+# Training
+LSTM_BATCH_SIZE     = 64      # samples per gradient step
+LSTM_EPOCHS         = 50      # training epochs
+LSTM_LEARNING_RATE  = 0.001   # Adam optimizer initial learning rate
+LSTM_DROPOUT        = 0.1     # dropout between LSTM layers (regularization)
+LSTM_GRAD_CLIP      = 1.0     # gradient clipping max norm (prevents exploding gradients)
+
+# Anomaly threshold (set after training from validation reconstruction error)
+# If MSE > this threshold → flag as anomaly
+# Will be overridden by the value computed and saved in model_metadata.json
+LSTM_ANOMALY_THRESHOLD_DEFAULT = 0.05   # placeholder — real value computed at train time
+
+# Model file paths (relative to project root)
+MODEL_DIR              = "models"
+MODEL_KEYSTROKE_PT     = "models/lstm_keystroke_pretrained.pt"
+MODEL_MOUSE_PT         = "models/lstm_mouse_pretrained.pt"
+MODEL_XGBOOST_PKL      = "models/xgboost_fusion.pkl"
+MODEL_METADATA_JSON    = "models/model_metadata.json"
+
