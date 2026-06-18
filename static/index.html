@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BehaviorShield — Continuous AI Behavioral Biometric Authentication</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
+  <style>
+    /* Additional custom styles for launcher page to make it extremely premium */
+    .hero-section {
+      padding: 7rem 0 5rem;
+      text-align: center;
+      background: radial-gradient(circle at center, rgba(6, 182, 212, 0.1) 0%, transparent 60%);
+      position: relative;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.25rem;
+      background: rgba(6, 182, 212, 0.08);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--cyan);
+      margin-bottom: 2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
+    }
+    .hero-title {
+      font-size: 3.8rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1.15;
+      margin-bottom: 1.75rem;
+      background: linear-gradient(135deg, #ffffff 30%, #64748b 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 40px rgba(255, 255, 255, 0.03);
+    }
+    .hero-subtitle {
+      font-size: 1.3rem;
+      color: var(--text-secondary);
+      max-width: 750px;
+      margin: 0 auto 3rem;
+      line-height: 1.6;
+    }
+    .cta-wrapper {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      margin-bottom: 4rem;
+    }
+    .step-card {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .step-card:hover {
+      transform: translateY(-5px);
+      border-color: var(--cyan);
+      box-shadow: var(--shadow-card), 0 0 25px rgba(6, 182, 212, 0.15);
+    }
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 700;
+      color: rgba(6, 182, 212, 0.25);
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+    .tech-badge-grid {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-top: 2rem;
+    }
+    .tech-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.45rem 1rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+    .tech-badge:hover {
+      border-color: var(--cyan);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.1);
+    }
+    /* SVG Architecture diagram styles */
+    .arch-svg-container {
+      width: 100%;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: 2.5rem 2rem;
+      margin-top: 3rem;
+      box-shadow: var(--shadow-card);
+    }
+    .pulse-glow {
+      animation: pulse-brand-glow 3s infinite;
+    }
+    @keyframes pulse-brand-glow {
+      0%, 100% { filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.2)); }
+      50% { filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.5)); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header class="navbar">
+    <div class="navbar-brand">
+      <div class="logo">🛡️</div>
+      <span>BehaviorShield</span>
+    </div>
+    <div class="navbar-actions">
+      <span class="badge badge-gray text-mono">v1.1.0</span>
+      <span class="badge badge-blue">Team SOLARIS</span>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="container">
+      <div class="hero-badge">
+        <span>🔒 Indian Public Sector Banking Cyber Security Hackathon 2026</span>
+      </div>
+      <h1 class="hero-title">Continuous, AI-Driven<br>Behavioral Biometric Authentication</h1>
+      <p class="hero-subtitle">
+        BehaviorShield silently monitors user keystroke rhythm and mouse trajectories. 
+        It establishes a real-time risk profile and blocks account takeovers continuously, without relying on friction-heavy OTPs.
+      </p>
+      
+      <div class="cta-wrapper">
+        <a href="/bank" class="btn btn-primary btn-lg">
+          🏦 Open Bharat Suraksha Bank Simulator
+        </a>
+        <a href="/dashboard" class="btn btn-secondary btn-lg">
+          📊 Open Security Operations Center
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features / How It Works -->
+  <section class="container mt-4 mb-8">
+    <h2 class="fw-800 text-center mb-6">Continuous Protection Life Cycle</h2>
+    <div class="grid-4">
+      <div class="card step-card">
+        <div class="step-number">01</div>
+        <h3 class="mb-2">Silent Enrollment</h3>
+        <p class="text-muted text-sm">
+          Users register by typing a short passphrase 5 times. Our light-weight JS SDK captures key timing down to milliseconds. No password or private text is collected or stored.
+        </p>
+      </div>
+
+      <div class="card step-card">
+        <div class="step-number">02</div>
+        <h3 class="mb-2">Telemetry Streams</h3>
+        <p class="text-muted text-sm">
+          During active sessions, mouse velocities, path shapes, and key frequencies are sampled and pushed in real-time. Perfectly straight mouse lines and 0ms flight times flag bot scripts instantly.
+        </p>
+      </div>
+
+      <div class="card step-card">
+        <div class="step-number">03</div>
+        <h3 class="mb-2">Fusion Scoring</h3>
+        <p class="text-muted text-sm">
+          A local Z-Score Profiler and Isolation Forest model calculate keystroke and mouse anomaly indices. A composite risk score (0-100) is refreshed dynamically.
+        </p>
+      </div>
+
+      <div class="card step-card">
+        <div class="step-number">04</div>
+        <h3 class="mb-2">Adaptive Response</h3>
+        <p class="text-muted text-sm">
+          Low risk scores pass seamlessly. Medium scores trigger step-up typing re-authentication. High scores freeze the session and issue fraud alerts to bank administrators.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Architecture Diagram -->
+  <section class="container mb-8">
+    <h2 class="fw-800 text-center mb-2">Technical System Architecture</h2>
+    <p class="text-muted text-center text-sm mb-4">Clicking Bharat Suraksha Bank or the SOC Dashboard opens them in simulation mode.</p>
+    
+    <div class="arch-svg-container">
+      <svg viewBox="0 0 1000 420" width="100%" height="100%" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <style>
+          @keyframes flow-right {
+            to { stroke-dashoffset: -20; }
+          }
+          @keyframes flow-left {
+            to { stroke-dashoffset: 20; }
+          }
+          .flow-line-right {
+            stroke-dasharray: 6 5;
+            animation: flow-right 0.8s linear infinite;
+          }
+          .flow-line-left {
+            stroke-dasharray: 6 5;
+            animation: flow-left 0.8s linear infinite;
+          }
+          .arch-node {
+            transition: all 0.3s ease;
+          }
+          .arch-node:hover {
+            filter: drop-shadow(0 0 10px var(--brand-glow));
+            stroke: var(--cyan);
+            cursor: pointer;
+          }
+          .arch-text {
+            pointer-events: none;
+          }
+        </style>
+        
+        <!-- Grid pattern background -->
+        <defs>
+          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(30, 48, 84, 0.15)" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grid)" rx="8"/>
+
+        <!-- Client Browser Layer -->
+        <rect x="50" y="80" width="220" height="260" rx="12" fill="var(--bg-card)" stroke="var(--border)" stroke-width="1.5" class="arch-node"/>
+        <text x="65" y="110" fill="var(--text-primary)" font-family="var(--font-sans)" font-size="14" font-weight="700" class="arch-text">Client Web Browser</text>
+        <line x1="65" y1="120" x2="250" y2="120" stroke="var(--border)" stroke-dasharray="2 2" class="arch-text"/>
+        
+        <!-- Browser contents -->
+        <rect x="65" y="135" width="190" height="50" rx="6" fill="rgba(59, 130, 246, 0.05)" stroke="var(--border-light)" class="arch-node"/>
+        <text x="75" y="155" fill="var(--text-primary)" font-family="var(--font-sans)" font-size="11" font-weight="600" class="arch-text">Bharat Suraksha Bank Portal</text>
+        <text x="75" y="172" fill="var(--cyan)" font-family="var(--font-sans)" font-size="10" class="arch-text">bank.html + bank.js</text>
+
+        <rect x="65" y="200" width="190" height="50" rx="6" fill="rgba(6, 182, 212, 0.05)" stroke="var(--border-light)" class="arch-node"/>
+        <text x="75" y="220" fill="var(--text-primary)" font-family="var(--font-sans)" font-size="11" font-weight="600" class="arch-text">BehaviorShield Telemetry SDK</text>
+        <text x="75" y="237" fill="var(--text-secondary)" font-family="var(--font-mono)" font-size="9" class="arch-text">sdk.js (Key / Mouse / Device)</text>
+
+        <!-- Dynamic arrows to server -->
+        <!-- Top arrow (POST API requests) -->
+        <path d="M 270 160 L 400 160" stroke="var(--brand)" stroke-width="2.5" class="flow-line-right" marker-end="url(#arrow-brand)"/>
+        <text x="282" y="148" fill="var(--brand)" font-family="var(--font-mono)" font-size="9" font-weight="700" class="arch-text">REST: /api/score</text>
+        
+        <!-- Bottom arrow (Adaptive Action responses) -->
+        <path d="M 400 210 L 280 210" stroke="var(--cyan)" stroke-width="2.5" class="flow-line-left" marker-end="url(#arrow-cyan)"/>
+        <text x="288" y="226" fill="var(--cyan)" font-family="var(--font-mono)" font-size="9" font-weight="700" class="arch-text">Response: band/action</text>
+
+        <!-- Backend FastAPI Server -->
+        <rect x="420" y="50" width="260" height="320" rx="12" fill="var(--bg-card)" stroke="var(--border)" stroke-width="2" class="pulse-glow arch-node"/>
+        <text x="440" y="85" fill="var(--text-primary)" font-family="var(--font-sans)" font-size="15" font-weight="700" class="arch-text">FastAPI Gateway & ML Engine</text>
+        <text x="440" y="102" fill="var(--text-secondary)" font-family="var(--font-mono)" font-size="10" class="arch-text">app.py | ml_engine.py</text>
+        <line x1="440" y1="115" x2="660" y2="115" stroke="var(--border)" class="arch-text"/>
+
+        <!-- Engine Components -->
+        <rect x="440" y="130" width="220" height="40" rx="6" fill="var(--bg-input)" stroke="var(--border)" class="arch-node"/>
+        <text x="450" y="154" fill="var(--green)" font-family="var(--font-mono)" font-size="10" font-weight="700" class="arch-text">Keystroke Profiler (Z-Score)</text>
+        
+        <rect x="440" y="180" width="220" height="40" rx="6" fill="var(--bg-input)" stroke="var(--border)" class="arch-node"/>
+        <text x="450" y="204" fill="var(--cyan)" font-family="var(--font-mono)" font-size="10" font-weight="700" class="arch-text">Mouse Profiler (Isolation Forest)</text>
+        
+        <rect x="440" y="230" width="220" height="40" rx="6" fill="var(--bg-input)" stroke="var(--border)" class="arch-node"/>
+        <text x="450" y="254" fill="var(--amber)" font-family="var(--font-mono)" font-size="10" font-weight="700" class="arch-text">Metadata & Context Rules</text>
+
+        <rect x="440" y="280" width="220" height="40" rx="6" fill="rgba(99, 102, 241, 0.1)" stroke="var(--indigo)" class="arch-node"/>
+        <text x="450" y="304" fill="var(--indigo)" font-family="var(--font-mono)" font-size="10" font-weight="700" class="arch-text">In-Memory Session Database</text>
+
+        <!-- WebSocket line from server to dashboard -->
+        <path d="M 680 160 L 760 160" stroke="var(--indigo)" stroke-width="2.5" class="flow-line-right" marker-end="url(#arrow-indigo)"/>
+        <text x="686" y="148" fill="var(--indigo)" font-family="var(--font-mono)" font-size="9" font-weight="700" class="arch-text">WebSocket Push</text>
+
+        <!-- Security Dashboard Layer -->
+        <rect x="780" y="80" width="170" height="260" rx="12" fill="var(--bg-card)" stroke="var(--border)" stroke-width="1.5" class="arch-node"/>
+        <text x="795" y="110" fill="var(--text-primary)" font-family="var(--font-sans)" font-size="13" font-weight="700" class="arch-text">Security Dashboard</text>
+        <line x1="795" y1="120" x2="935" y2="120" stroke="var(--border)" stroke-dasharray="2 2" class="arch-text"/>
+
+        <rect x="795" y="135" width="140" height="50" rx="6" fill="rgba(99, 102, 241, 0.05)" stroke="var(--border-light)" class="arch-node"/>
+        <text x="805" y="155" fill="var(--text-primary)" font-family="var(--font-sans)" font-size="11" font-weight="600" class="arch-text">Fraud-Ops Console</text>
+        <text x="805" y="172" fill="var(--indigo)" font-family="var(--font-sans)" font-size="10" class="arch-text">dashboard.html</text>
+
+        <rect x="795" y="200" width="140" height="85" rx="6" fill="var(--bg-input)" stroke="var(--border)" class="arch-node"/>
+        <text x="805" y="220" fill="var(--text-secondary)" font-family="var(--font-sans)" font-size="9" font-weight="700" class="arch-text">ANALYST ACTIONS</text>
+        <text x="805" y="235" fill="var(--red)" font-family="var(--font-sans)" font-size="9" class="arch-text">■ Force Session Freeze</text>
+        <text x="805" y="250" fill="var(--green)" font-family="var(--font-sans)" font-size="9" class="arch-text">■ Unfreeze / False Pos.</text>
+        <text x="805" y="265" fill="var(--brand)" font-family="var(--font-sans)" font-size="9" class="arch-text">■ View SHAP Explanations</text>
+
+        <!-- SVG markers for arrow heads -->
+        <defs>
+          <marker id="arrow-brand" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--brand)"/>
+          </marker>
+          <marker id="arrow-cyan" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+            <path d="M 6 0 L 0 3 L 6 6 z" fill="var(--cyan)"/>
+          </marker>
+          <marker id="arrow-indigo" markerWidth="6" markerHeight="6" refX="4" refY="3" orient="auto">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--indigo)"/>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+  </section>
+
+  <!-- Technical Stack badge section -->
+  <section class="container mt-6 mb-8 text-center">
+    <h3>Built For Scale & Sovereignty</h3>
+    <p class="text-muted text-sm mt-1">Lightweight, performant, and fully hostable within a Public Sector Bank's intranet infrastructure.</p>
+    <div class="tech-badge-grid">
+      <div class="tech-badge">⚡ <span>FastAPI (Python)</span></div>
+      <div class="tech-badge">🧠 <span>Scikit-Learn (Isolation Forest)</span></div>
+      <div class="tech-badge">📈 <span>Numpy & Pandas</span></div>
+      <div class="tech-badge">🔌 <span>WebSockets (Uvicorn)</span></div>
+      <div class="tech-badge">🌐 <span>Vanilla JS & CSS</span></div>
+      <div class="tech-badge">🧬 <span>Z-Score Profiler</span></div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="container text-center text-muted text-xs mb-8" style="border-top: 1px solid var(--border); padding-top: 2rem;">
+    <p>BehaviorShield — Cyber Security Hackathon 2026 PoC</p>
+    <p class="mt-1">Designed with precision by Team SOLARIS (MNNIT Allahabad)</p>
+  </footer>
+
+</body>
+</html>

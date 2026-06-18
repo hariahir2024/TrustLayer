@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BehaviorShield — Security Operations Center</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
+  <style>
+    /* Dashboard specific layout adjustments */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1.25rem;
+    }
+    .col-3 { grid-column: span 3; }
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+    
+    .session-list-card {
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .sidebar-header {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin: 1.25rem 0.5rem 0.5rem;
+    }
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 250px;
+      text-align: center;
+      border: 1px dashed rgba(6, 182, 212, 0.25);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      background: rgba(6, 182, 212, 0.02);
+      box-shadow: inset 0 0 20px rgba(6, 182, 212, 0.03);
+    }
+  </style>
+</head>
+<body class="dashboard-page">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛡️</div>
+      <div class="logo-text">
+        <h3>BehaviorShield</h3>
+        <p>Security Operations Center</p>
+      </div>
+    </div>
+
+    <!-- Connection Indicator -->
+    <div class="ws-indicator px-2 mb-4 Disconnected" id="ws-indicator" style="margin-bottom: 1rem; margin-top: 0.5rem;">
+      <div class="ws-dot"></div>
+      <span id="ws-status">Connecting to engine...</span>
+    </div>
+
+    <div class="sidebar-header">Threat Management</div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-nav-item active" id="nav-item-monitor" onclick="switchTab('monitor')">
+        📊 Real-Time Monitor
+      </div>
+      <div class="sidebar-nav-item" id="nav-item-threats" onclick="switchTab('threats')">
+        🚨 Active Alerts
+      </div>
+    </nav>
+
+    <div class="sidebar-header">Quick Admin Controls</div>
+    <nav class="sidebar-nav">
+      <button class="btn btn-secondary btn-sm mb-2" id="btn-soft-reset" style="text-align: left; justify-content: flex-start; padding-left: 0.75rem;">
+        🔄 Clear Live Sessions
+      </button>
+      <button class="btn btn-danger btn-sm" id="btn-hard-reset" style="text-align: left; justify-content: flex-start; padding-left: 0.75rem;">
+        ⚠️ Complete Database Reset
+      </button>
+    </nav>
+  </aside>
+
+  <!-- Main Dashboard Content -->
+  <main class="main-content">
+    
+    <!-- Top Stats Cards -->
+    <section class="grid-4 w-full">
+      <div class="stat-card" style="--card-accent: var(--brand);">
+        <div class="stat-label">Active Monitoring Sessions</div>
+        <div class="stat-value" id="stat-active-sessions">0</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--amber);">
+        <div class="stat-label">Average Risk Index</div>
+        <div class="stat-value text-mono" id="stat-avg-risk">0.0</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--red);">
+        <div class="stat-label">Threat Alerts Triggered</div>
+        <div class="stat-value text-mono" id="stat-total-threats">0</div>
+      </div>
+      <div class="stat-card" style="--card-accent: var(--red-critical);">
+        <div class="stat-label">Sessions Frozen / Locked</div>
+        <div class="stat-value text-mono" id="stat-frozen-sessions">0</div>
+      </div>
+    </section>
+
+    <!-- Tab 1: Real-Time Monitor -->
+    <div id="tab-monitor" class="w-full flex flex-col gap-6">
+      
+      <!-- Session List Table -->
+      <section class="card">
+        <div class="card-header">
+          <h3>Active Network Sessions</h3>
+          <span class="text-xs text-muted">Updates in real-time</span>
+        </div>
+        <div class="session-list-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Session ID</th>
+                <th>Username</th>
+                <th>Status</th>
+                <th>Actions</th>
+                <th>Risk Score</th>
+                <th>Band</th>
+              </tr>
+            </thead>
+            <tbody id="session-table-body">
+              <tr>
+                <td colspan="6" class="text-center text-muted">No active sessions currently monitored.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Session Deep-Dive Workspace (hidden when no session is selected) -->
+      <section id="deep-dive-workspace" class="hidden">
+        <div class="dashboard-grid">
+          
+          <!-- Selected Session Overview -->
+          <div class="card col-12" style="border-left: 4px solid var(--brand); padding: 1.5rem;">
+            <div class="grid-2" style="gap: 1.5rem; grid-template-columns: 1.2fr 1.8fr;">
+              
+              <!-- Left: Analyst Action Panel -->
+              <div class="flex flex-col justify-between" style="border-right: 1px dashed var(--border); padding-right: 1.5rem;">
+                <div>
+                  <div class="flex justify-between items-start mb-2">
+                    <div>
+                      <h2 id="dd-username" style="font-size: 1.5rem; font-weight: 800; color: #fff;">User Profile</h2>
+                      <p class="text-mono text-xs text-muted mt-1" id="dd-session-id" style="font-size: 0.72rem; word-break: break-all;">Session: ----------------</p>
+                    </div>
+                    <span id="dd-risk-badge" class="badge badge-green" style="padding: 0.35rem 0.85rem; font-size: 0.75rem;">GREEN</span>
+                  </div>
+                  
+                  <div class="flex items-center gap-3 mt-2">
+                    <span class="text-xs text-muted uppercase fw-700" style="letter-spacing: 0.05em; font-size: 0.75rem;">Session Risk Index:</span>
+                    <div class="flex items-end gap-1">
+                      <span id="dd-risk-score" class="score-number green" style="font-size: 2.2rem; font-weight: 900;">0.0</span>
+                      <span class="text-muted text-mono text-xs" style="margin-bottom: 5px;">/ 100</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Admin Action Overrides -->
+                <div class="flex gap-2 mt-4" style="border-top: 1px solid var(--border); padding-top: 1rem;">
+                  <button class="btn btn-danger btn-sm" id="btn-force-freeze" style="font-size: 0.8rem; font-weight: 700; padding: 0.5rem 1rem;">🚨 Force Freeze</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-force-unfreeze" style="font-size: 0.8rem; font-weight: 700; padding: 0.5rem 1rem;">✓ Dismiss Alert</button>
+                </div>
+              </div>
+
+              <!-- Right: Device Profile & Diagnostics -->
+              <div class="flex flex-col justify-between" style="padding-left: 0.5rem;">
+                <div>
+                  <h4 class="mb-3 text-xs uppercase text-brand fw-700" style="letter-spacing: 0.08em; margin-bottom: 0.75rem; color: var(--cyan);">Session Profile & Diagnostics</h4>
+                  <div class="grid-2" style="gap: 1rem; grid-template-columns: 1fr 1fr; font-size: 0.82rem;">
+                    <div>
+                      <span class="text-muted text-xs uppercase" style="display:block; font-size:0.68rem; font-weight:700; letter-spacing:0.04em; margin-bottom: 0.2rem;">Client IP Address</span>
+                      <strong id="dd-ip-address" class="text-mono" style="color: #f1f5f9; font-size: 0.9rem;">--</strong>
+                    </div>
+                    <div>
+                      <span class="text-muted text-xs uppercase" style="display:block; font-size:0.68rem; font-weight:700; letter-spacing:0.04em; margin-bottom: 0.2rem;">Telemetry Refresh Rate</span>
+                      <strong id="dd-interval" style="color: #f1f5f9; font-size: 0.9rem;">--</strong>
+                    </div>
+                    <div style="grid-column: span 2;">
+                      <span class="text-muted text-xs uppercase" style="display:block; font-size:0.68rem; font-weight:700; letter-spacing:0.04em; margin-bottom: 0.2rem;">Browser User Agent</span>
+                      <strong id="dd-user-agent" class="text-mono" style="color: #94a3b8; font-size: 0.75rem; word-break: break-all; font-weight: 400; line-height: 1.4;">--</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Left Column: Keystroke Comparison and Mouse Draw -->
+          <div class="col-8 flex flex-col gap-6">
+            
+            <!-- Keystroke deviation chart -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Keystroke Timing Profile Comparison</h3>
+                <span class="text-xs text-muted">Observed vs. Enrolled Baseline</span>
+              </div>
+              <div class="chart-container">
+                <canvas id="keystroke-chart"></canvas>
+              </div>
+            </div>
+
+            <!-- Mouse path coordinates canvas -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Mouse Trajectory Canvas</h3>
+                <span class="text-xs text-muted">Real-time coordinates and curvature analytics</span>
+              </div>
+              <canvas class="trajectory-canvas" id="dd-mouse-canvas"></canvas>
+              <div class="flex justify-between text-xs text-muted mt-2">
+                <span>Straightness Score: <strong id="mouse-straightness">-</strong></span>
+                <span>Click Freq: <strong id="mouse-click-freq">- clicks/min</strong></span>
+                <span>Velocity Variance: <strong id="mouse-variance">-</strong></span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Risk Breakdown and Session Events -->
+          <div class="col-4 flex flex-col gap-6">
+            
+            <!-- SHAP Explainability Breakdown -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Explainable AI Breakdown</h3>
+                <span class="text-xs text-muted">Primary anomaly contributors</span>
+              </div>
+              <div class="breakdown-list" id="dd-shap-list">
+                <!-- Injected dynamically -->
+                <p class="text-xs text-muted">No anomaly triggers active.</p>
+              </div>
+            </div>
+
+            <!-- Event Log specific to the user -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Session Heartbeat & Audits</h3>
+              </div>
+              <div class="log-feed" id="dd-session-logs" style="max-height: 250px;">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Empty state when no session is selected -->
+      <section id="deep-dive-empty" class="empty-state col-12">
+        <span style="font-size: 3rem;">🖥️</span>
+        <h3 class="mt-2">No Session Selected</h3>
+        <p class="text-muted text-sm mt-1">Select an active NetBanking session from the table above to analyze timing baselines, keystroke profiles, and mouse pathways in real-time.</p>
+      </section>
+
+    </div>
+
+    <!-- Tab 2: Security Event Logs (Full feed) -->
+    <div id="tab-threats" class="w-full card hidden">
+      <div class="card-header">
+        <h3>Live Security Audit Log</h3>
+        <span class="text-xs text-muted">Aggregated fraud-ops feed</span>
+      </div>
+      <div class="log-feed" id="global-log-feed" style="max-height: 600px;">
+        <!-- Filled in real time -->
+        <p class="text-center text-muted p-4">Awaiting security events from Bharat Suraksha Bank...</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Script tags -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/static/js/dashboard.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Bharat Suraksha Bank",
+  "short_name": "BSB NetBanking",
+  "description": "Bharat Suraksha Bank Premium Internet NetBanking Portal",
+  "start_url": "/bank",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#06b6d4",
+  "icons": [
+    {
+      "src": "/static/js/sdk.js",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
