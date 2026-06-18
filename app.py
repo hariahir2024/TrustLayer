@@ -28,6 +28,7 @@
 #   WS   /ws/dashboard            → WebSocket for real-time dashboard updates
 # =============================================================================
 
+import os
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -39,8 +40,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import database as db
+import db_sqlite as db          # ← SQLite-backed persistent database (replaces database.py)
 import ml_engine as ml
+import constants as _const_mod  # for runtime mutation of ADVISORY_MODE
 from constants import (
     BANK_NAME, SYSTEM_NAME, SYSTEM_VERSION,
     AMBER_HIGH_ALLOWED_ACTIONS, AMBER_HIGH_BLOCKED_ACTIONS,
@@ -49,7 +51,8 @@ from constants import (
     REAUTH_MAX_ATTEMPTS, REAUTH_SCORE_PENALTY, STEPUP_REAUTH_THRESHOLD,
     BOT_SCORE_OVERRIDE, ENROLLMENT_REQUIRED_SAMPLES,
     AMBER_LOW_SCORING_INTERVAL_SEC, DEFAULT_SCORING_INTERVAL_SEC,
-    get_score_band,
+    ADVISORY_MODE, BASELINE_DRIFT_WEIGHT,
+    generate_passphrase, get_score_band,
 )
 
 logging.basicConfig(
@@ -101,9 +104,11 @@ manager = ConnectionManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load ML baselines at startup."""
+    """Initialise database and load ML baselines at startup."""
     log.info(f"Starting {SYSTEM_NAME} v{SYSTEM_VERSION}")
-    ml.load_generic_baselines()
+    db.init_db()                  # create SQLite tables if they don't exist
+    ml.load_generic_baselines()   # load CMU/BALABIT population baselines
+    ml.restore_all_user_profiles()# reload enrolled user profiles from SQLite
     log.info(f"{BANK_NAME} portal ready.")
     yield
     log.info("Server shutting down.")
@@ -150,10 +155,63 @@ async def dashboard():
 # REQUEST MODELS
 # =============================================================================
 
+class RegisterRequest(BaseModel):
+    username:       str
+    first_name:     str
+    last_name:      str
+    email:          str
+    mobile:         str
+    city:           str
+    date_of_birth:  str
+    password:       Optional[str] = ""
+
 class EnrollRequest(BaseModel):
     username:       str
     key_events:     list
     field_focus_ts: Optional[float] = None
+    device_class:   Optional[str] = "DESKTOP"
+
+
+# =============================================================================
+# REGISTRATION ENDPOINT
+# =============================================================================
+
+@app.post("/api/register")
+async def register(req: RegisterRequest):
+    """
+    Register a new user account, generate an account number, and return a dynamic passphrase.
+    """
+    if not req.username or not req.first_name or not req.last_name:
+        raise HTTPException(400, "username, first_name, and last_name are required fields")
+    
+    if db.user_exists(req.username):
+        raise HTTPException(400, f"Username '{req.username}' is already registered")
+        
+    import hashlib
+    password_hash = hashlib.sha256(req.password.encode()).hexdigest() if req.password else ""
+    
+    user = db.create_user(
+        username=req.username,
+        first_name=req.first_name,
+        last_name=req.last_name,
+        city=req.city,
+        mobile=req.mobile,
+        dob=req.date_of_birth,
+        email=req.email,
+        password_hash=password_hash
+    )
+    
+    if not user:
+        raise HTTPException(500, "Failed to create user record")
+        
+    return {
+        "status": "success",
+        "username": user["username"],
+        "account_number": user["account_number"],
+        "passphrase": user["passphrase"],
+        "message": "User registered successfully"
+    }
+
 
 class LoginRequest(BaseModel):
     username:         str
@@ -161,6 +219,7 @@ class LoginRequest(BaseModel):
     field_focus_ts:   Optional[float] = None
     device_info:      Optional[dict]  = {}   # {user_agent, screen_width, screen_height,
                                               #  color_depth, timezone, language}
+    password:         Optional[str] = ""
 
 class ScoreRequest(BaseModel):
     session_id:       str
@@ -202,6 +261,7 @@ async def enroll(req: EnrollRequest):
         req.username,
         req.key_events,
         req.field_focus_ts,
+        device_class=req.device_class or "DESKTOP"
     )
 
     if result["complete"]:
@@ -220,7 +280,7 @@ async def enroll(req: EnrollRequest):
 # =============================================================================
 
 @app.post("/api/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
     """
     Authenticate user and create a behavioral session.
     Scores the login keystroke event immediately as the first behavioral signal.
@@ -228,14 +288,20 @@ async def login(req: LoginRequest):
     if not req.username:
         raise HTTPException(400, "username is required")
 
-    # Create user if first visit
     if not db.user_exists(req.username):
-        db.create_user(req.username)
+        raise HTTPException(400, f"Username '{req.username}' does not exist. Please register.")
 
     user = db.get_user(req.username)
 
+    if user.get("password_hash") and (req.password or not req.key_events):
+        import hashlib
+        pwd_hash = hashlib.sha256(req.password.encode()).hexdigest() if req.password else ""
+        if user["password_hash"] != pwd_hash:
+            raise HTTPException(401, "Invalid password")
+
     # Compute device fingerprint from browser metadata
     info = req.device_info or {}
+    device_class = info.get("device_class", "DESKTOP")
     device_fp = db.generate_device_fingerprint(
         user_agent    = info.get("user_agent", ""),
         screen_width  = info.get("screen_width", 0),
@@ -245,16 +311,25 @@ async def login(req: LoginRequest):
         language      = info.get("language", "en"),
     )
 
-    # Save enrolled device fingerprint on first login
-    if user["device_fingerprint"] is None:
-        db.save_device_fingerprint(req.username, device_fp)
+    # Save enrolled device fingerprint on first login for this device class
+    known_fp = db.get_device_fingerprint(req.username, device_class)
+    if known_fp is None:
+        db.save_device_fingerprint(req.username, device_fp, device_class)
+
+    # Real IP extraction (works behind Nginx/Railway reverse proxy)
+    ip_address = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "")
+        or (request.client.host if request.client else "127.0.0.1")
+    )
 
     # Create the session
     session_id = db.create_session(
         username           = req.username,
-        ip_address         = "127.0.0.1",
+        ip_address         = ip_address,
         user_agent         = info.get("user_agent", ""),
         device_fingerprint = device_fp,
+        device_class       = device_class,
     )
 
     # Run initial scoring on login keystroke data
@@ -285,10 +360,14 @@ async def login(req: LoginRequest):
         "band":       score_result["band"],
     })
 
+    # Check if enrolled for this specific device class
+    enrolled = db.is_enrolled(req.username, device_class)
+
     return {
         "session_id":   session_id,
         "username":     req.username,
-        "enrolled":     user["enrolled"],
+        "enrolled":     enrolled,
+        "passphrase":   user.get("passphrase", ""),
         "score":        score_result["final_score"],
         "band":         score_result["band"],
         "action":       score_result["action"],
@@ -356,7 +435,7 @@ async def score(req: ScoreRequest):
         "timestamp":        time.time(),
         "ip_address":       session.get("ip_address"),
         "user_agent":       session.get("user_agent"),
-        "scoring_interval": new_interval,
+        "scoring_interval": result.get("scoring_interval", 30),
     })
 
     # Trigger freeze events on high-risk bands
@@ -716,26 +795,512 @@ async def admin_reset():
 @app.post("/api/admin/soft-reset")
 async def admin_soft_reset():
     """
-    Soft reset — clears sessions and logs but keeps enrolled user profiles.
+    Soft reset — clears in-memory sessions and logs but keeps enrolled user profiles in SQLite.
     Useful for showing a new attack scenario without re-enrolling.
     """
-    # Only clear sessions and logs, keep _users
-    from database import _sessions, _fraud_log, _ip_tracker
-    _sessions.clear()
-    _fraud_log.clear()
-    _ip_tracker.clear()
+    db.reset_all()   # clears in-memory sessions, ip_tracker, model_cache only
     await manager.broadcast({"type": "soft_reset"})
-    return {"reset": True, "message": "Sessions cleared. Enrolled profiles retained."}
+    return {"reset": True, "message": "Sessions cleared. Enrolled profiles retained in database."}
 
 
 @app.get("/api/admin/baseline/{username}")
-async def admin_get_baseline(username: str):
+async def admin_get_baseline(username: str, device_class: str = "DESKTOP"):
     """Get the user's keystroke baseline for verification."""
-    baseline = db.get_keystroke_baseline(username)
+    baseline = db.get_keystroke_baseline(username, device_class)
     if not baseline:
         raise HTTPException(404, "Baseline not found")
     return baseline
 
+
+# =============================================================================
+# REGISTRATION ENDPOINT
+# =============================================================================
+
+class RegisterRequest(BaseModel):
+    first_name:    str
+    last_name:     str
+    mobile:        str
+    date_of_birth: str
+    email:         Optional[str] = ""
+    city:          str
+    account_type:  str = "savings"
+    username:      str
+    password:      str
+
+
+@app.post("/api/register")
+async def register(req: RegisterRequest):
+    """
+    Register a new user account.
+    Generates account number and personal passphrase.
+    Returns passphrase for user to memorise before enrollment.
+    """
+    if not req.username or len(req.username) < 4:
+        raise HTTPException(400, "Username must be at least 4 characters")
+    if db.user_exists(req.username):
+        raise HTTPException(409, f"Username '{req.username}' is already taken")
+    if len(req.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    if not req.first_name or not req.last_name:
+        raise HTTPException(400, "First and last name are required")
+    if not req.city:
+        raise HTTPException(400, "City is required")
+
+    passphrase    = generate_passphrase(req.first_name, req.last_name)
+    password_hash = db.hash_password(req.password)
+
+    user = db.create_user(
+        username      = req.username,
+        first_name    = req.first_name,
+        last_name     = req.last_name,
+        city          = req.city,
+        mobile        = req.mobile,
+        date_of_birth = req.date_of_birth,
+        email         = req.email or "",
+        account_type  = req.account_type,
+        passphrase    = passphrase,
+        password_hash = password_hash,
+    )
+
+    log.info(f"New user registered: {req.username} (passphrase: {passphrase})")
+    return {
+        "success":        True,
+        "username":       req.username,
+        "account_number": user["account_number"],
+        "passphrase":     passphrase,
+        "message":        f"Welcome to {BANK_NAME}! Memorise your passphrase: {passphrase}",
+    }
+
+
+# =============================================================================
+# USER PROFILE ENDPOINTS
+# =============================================================================
+
+@app.get("/api/profile/{username}")
+async def get_profile(username: str):
+    """Return full user profile (for the Profile tab)."""
+    user = db.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+    # Never return the password hash
+    user.pop("password_hash", None)
+    return user
+
+
+@app.get("/api/passphrase/{username}")
+async def get_passphrase(username: str):
+    """Return the user's enrollment passphrase (shown during enrollment screen)."""
+    user = db.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return {"passphrase": user["passphrase"]}
+
+
+class ChangePasswordRequest(BaseModel):
+    username:     str
+    old_password: str
+    new_password: str
+
+
+@app.post("/api/change-password")
+async def change_password(req: ChangePasswordRequest):
+    """Update user password after verifying old password."""
+    if not db.verify_password(req.username, req.old_password):
+        raise HTTPException(401, "Current password is incorrect")
+    if len(req.new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    db.update_user_password(req.username, db.hash_password(req.new_password))
+    return {"success": True, "message": "Password updated successfully"}
+
+
+@app.post("/api/reset-enrollment/{username}")
+async def reset_enrollment(username: str, device_class: str = "DESKTOP"):
+    """
+    Clear behavioral profile for (username, device_class).
+    Forces re-enrollment on next login from that device class.
+    """
+    import sqlite3
+    conn = db._connect()
+    try:
+        conn.execute("""
+            UPDATE behavioral_profiles
+            SET enrolled=0, enrollment_count=0, keystroke_means='{}',
+                keystroke_stds='{}', enrollment_seqs='[]', device_fps='[]'
+            WHERE username=? AND device_class=?
+        """, (username, device_class))
+        conn.commit()
+    finally:
+        conn.close()
+    log.info(f"Enrollment reset: {username}/{device_class}")
+    return {"success": True, "message": f"Biometric profile cleared for {username} on {device_class}"}
+
+
+@app.get("/api/security-events/{username}")
+async def get_security_events(username: str, limit: int = 10):
+    """Return recent login events for the Security Centre (Profile tab)."""
+    events = db.get_user_security_events(username, limit=limit)
+    return {"events": events}
+
+
+@app.get("/api/session-history/{username}")
+async def get_session_history(username: str, limit: int = 10):
+    """Return persistent session history for a user."""
+    history = db.get_session_history(username, limit=limit)
+    return {"sessions": history}
+
+
+# =============================================================================
+# TRANSACTION ENDPOINTS
+# =============================================================================
+
+@app.get("/api/transactions/{username}")
+async def get_transactions(username: str, limit: int = 50, txn_type: str = None):
+    """Return transaction history for a user."""
+    if not db.user_exists(username):
+        raise HTTPException(404, "User not found")
+    txns = db.get_transactions(username, limit=limit, txn_type=txn_type)
+    return {"transactions": txns, "count": len(txns)}
+
+
+class BillPaymentRequest(BaseModel):
+    session_id:  str
+    biller_type: str      # 'electricity', 'mobile', 'dth', 'insurance', 'water'
+    consumer_id: str
+    amount:      float
+    description: str = ""
+
+
+@app.post("/api/bill-payment")
+async def bill_payment(req: BillPaymentRequest):
+    """Process a bill payment transaction."""
+    session = db.get_session(req.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] == "terminated":
+        raise HTTPException(403, "Session is frozen")
+
+    username = session["username"]
+    user     = db.get_user(username)
+    if not user or user["balance"] < req.amount:
+        raise HTTPException(400, "Insufficient balance")
+
+    txn = db.add_transaction(
+        username    = username,
+        session_id  = req.session_id,
+        txn_type    = f"bill_{req.biller_type}",
+        amount      = req.amount,
+        description = req.description or f"{req.biller_type.title()} payment — {req.consumer_id}",
+        beneficiary = req.consumer_id,
+        status      = "success",
+        risk_score  = session["current_risk"],
+    )
+    db.record_session_action(req.session_id)
+    return {"success": True, "transaction": txn, "new_balance": user["balance"] - req.amount}
+
+
+class UPIRequest(BaseModel):
+    session_id: str
+    upi_id:     str
+    amount:     float
+    note:       str = ""
+
+
+@app.post("/api/upi")
+async def upi_payment(req: UPIRequest):
+    """Process a UPI payment."""
+    session = db.get_session(req.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] == "terminated":
+        raise HTTPException(403, "Session is frozen")
+
+    username = session["username"]
+    user     = db.get_user(username)
+    if not user or user["balance"] < req.amount:
+        raise HTTPException(400, "Insufficient balance")
+
+    txn = db.add_transaction(
+        username    = username,
+        session_id  = req.session_id,
+        txn_type    = "upi",
+        amount      = req.amount,
+        description = req.note or f"UPI to {req.upi_id}",
+        beneficiary = req.upi_id,
+        status      = "success",
+        risk_score  = session["current_risk"],
+    )
+    db.record_session_action(req.session_id)
+    return {"success": True, "transaction": txn, "new_balance": user["balance"] - req.amount}
+
+
+# =============================================================================
+# PAYEE ENDPOINTS
+# =============================================================================
+
+@app.get("/api/payees/{username}")
+async def get_payees(username: str):
+    """Return saved payees for a user."""
+    return {"payees": db.get_payees(username)}
+
+
+class AddPayeeRequest(BaseModel):
+    session_id:     str
+    name:           str
+    account_number: str = ""
+    ifsc:           str = ""
+    bank_name:      str = ""
+    upi_id:         str = ""
+
+
+@app.post("/api/payees")
+async def add_payee(req: AddPayeeRequest):
+    """Add a new saved payee."""
+    session = db.get_session(req.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    # Block adding payees at AMBER HIGH
+    if session["risk_band"] in ("AMBER_HIGH", "RED_LOW", "RED_HIGH", "RED_CRITICAL"):
+        raise HTTPException(403, "Adding payees is restricted at your current security level")
+
+    payee = db.add_payee(
+        owner_username = session["username"],
+        name           = req.name,
+        account_number = req.account_number,
+        ifsc           = req.ifsc,
+        bank_name      = req.bank_name,
+        upi_id         = req.upi_id,
+    )
+    db.record_session_action(req.session_id)
+    return {"success": True, "payee": payee}
+
+
+@app.delete("/api/payees/{payee_id}")
+async def delete_payee(payee_id: int, session_id: str):
+    """Remove a saved payee."""
+    session = db.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    deleted = db.delete_payee(payee_id, session["username"])
+    if not deleted:
+        raise HTTPException(404, "Payee not found or not owned by this user")
+    return {"success": True}
+
+
+# =============================================================================
+# FIXED DEPOSIT ENDPOINT
+# =============================================================================
+
+class FDRequest(BaseModel):
+    session_id: str
+    amount:     float
+    tenure:     int
+
+@app.post("/api/fd")
+async def book_fd(req: FDRequest):
+    """Book a new Fixed Deposit."""
+    session = db.get_session(req.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] == "terminated":
+        raise HTTPException(403, "Session is frozen")
+        
+    username = session["username"]
+    user = db.get_user(username)
+    if not user or user["balance"] < req.amount:
+        raise HTTPException(400, "Insufficient balance")
+        
+    rates = {1: 6.8, 3: 7.2, 5: 7.5}
+    rate = rates.get(req.tenure, 6.8)
+    
+    # Record transaction
+    db.add_transaction(
+        username=username,
+        session_id=req.session_id,
+        txn_type="deposit",
+        amount=req.amount,
+        description=f"FD Booking — {req.tenure} Yr @ {rate}% p.a.",
+        beneficiary="Fixed Deposit Account",
+        status="success",
+        risk_score=session["current_risk"]
+    )
+    
+    # Manually deduct balance for 'deposit' type
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET balance = balance - ? WHERE username = ?", (req.amount, username))
+    conn.commit()
+    conn.close()
+    
+    db.record_session_action(req.session_id)
+    
+    updated_user = db.get_user(username)
+    return {
+        "success": True,
+        "new_balance": updated_user["balance"],
+        "maturity_amount": req.amount * (1 + (rate / 100) * req.tenure),
+        "interest_earned": req.amount * (rate / 100) * req.tenure
+    }
+
+
+# =============================================================================
+# PASSWORD MANAGEMENT ENDPOINT
+# =============================================================================
+
+class ChangePasswordRequest(BaseModel):
+    session_id:   str
+    old_password: str
+    new_password: str
+
+@app.post("/api/profile/change-password")
+async def change_password(req: ChangePasswordRequest):
+    """Change user's NetBanking password."""
+    session = db.get_session(req.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] == "terminated":
+        raise HTTPException(403, "Session is frozen")
+        
+    username = session["username"]
+    user = db.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+        
+    import hashlib
+    old_hash = hashlib.sha256(req.old_password.encode()).hexdigest()
+    if user["password_hash"] and user["password_hash"] != old_hash:
+        raise HTTPException(400, "Incorrect current password")
+        
+    new_hash = hashlib.sha256(req.new_password.encode()).hexdigest()
+    
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username))
+    conn.commit()
+    conn.close()
+    
+    db.record_session_action(req.session_id)
+    return {"success": True, "message": "Password changed successfully"}
+
+
+# =============================================================================
+# SUPPORT TICKETS ENDPOINTS
+# =============================================================================
+
+class SupportTicketRequest(BaseModel):
+    session_id:  str
+    category:    str
+    description: str
+
+@app.post("/api/support/tickets")
+async def log_support_ticket(req: SupportTicketRequest):
+    """Submit a support ticket."""
+    session = db.get_session(req.session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+    if session["status"] == "terminated":
+        raise HTTPException(403, "Session is frozen")
+        
+    username = session["username"]
+    ticket = db.add_support_ticket(username, req.category, req.description)
+    db.record_session_action(req.session_id)
+    return {"success": True, "ticket": ticket}
+
+@app.get("/api/support/tickets/{username}")
+async def get_support_tickets(username: str):
+    """Return all support tickets for a user."""
+    tickets = db.get_support_tickets(username)
+    return {"tickets": tickets, "count": len(tickets)}
+
+
+# =============================================================================
+# USER PROFILE & SECURITY AUDIT ENDPOINTS
+# =============================================================================
+
+@app.get("/api/user/{username}")
+async def get_user_profile(username: str):
+    """Get profile details for a user."""
+    user = db.get_user(username)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return {
+        "username":       user["username"],
+        "first_name":     user["first_name"],
+        "last_name":      user["last_name"],
+        "email":          user["email"],
+        "mobile":         user["mobile"],
+        "city":           user["city"],
+        "date_of_birth":  user["date_of_birth"],
+        "account_number": user["account_number"],
+        "balance":        user["balance"],
+        "passphrase":     user["passphrase"]
+    }
+
+@app.get("/api/user/{username}/security-log")
+async def get_security_log(username: str, limit: int = 5):
+    """Fetch security audit events for a user."""
+    log_entries = db.get_security_events_for_user(username, limit=limit)
+    return {"events": log_entries, "count": len(log_entries)}
+
+
+# =============================================================================
+# DATA COLLECTION CAMPAIGN ENDPOINTS (Stream 6)
+# =============================================================================
+
+class LabelIntruderRequest(BaseModel):
+    session_id:       str
+    label_all_recent: bool = False
+
+
+@app.post("/api/admin/label-intruder")
+async def label_intruder(req: LabelIntruderRequest):
+    """
+    Mark session(s) as intruder for XGBoost retraining dataset.
+    Used after a friend/family member completes test sessions on the account.
+    """
+    count = db.label_session_intruder(req.session_id, req.label_all_recent)
+    log.info(f"Intruder label applied: session={req.session_id}, rows_updated={count}")
+    return {"success": True, "sessions_labeled": count}
+
+
+@app.get("/api/admin/data-collection-summary")
+async def data_collection_summary():
+    """Return per-user per-device session counts for the SOC dashboard."""
+    return db.get_data_collection_summary()
+
+
+# =============================================================================
+# ADVISORY MODE TOGGLE (Bonus B2)
+# =============================================================================
+
+class SetModeRequest(BaseModel):
+    mode: str   # 'active' or 'advisory'
+
+
+@app.post("/api/admin/set-mode")
+async def set_mode(req: SetModeRequest):
+    """
+    Toggle between Active Mode (challenges users) and Advisory Mode (silent scoring).
+    Change takes effect immediately for all subsequent scoring events.
+    """
+    if req.mode not in ("active", "advisory"):
+        raise HTTPException(400, "mode must be 'active' or 'advisory'")
+
+    _const_mod.ADVISORY_MODE = (req.mode == "advisory")
+    log.info(f"System mode changed to: {req.mode.upper()}")
+
+    await manager.broadcast({
+        "type": "mode_changed",
+        "mode": req.mode,
+        "message": f"System switched to {req.mode.upper()} mode",
+    })
+    return {"success": True, "mode": req.mode}
+
+
+@app.get("/api/admin/mode")
+async def get_mode():
+    """Return the current system operating mode."""
+    import constants
+    return {"mode": "advisory" if constants.ADVISORY_MODE else "active"}
 
 
 # =============================================================================
@@ -750,10 +1315,12 @@ async def websocket_dashboard(ws: WebSocket):
     """
     await manager.connect(ws)
     try:
+        import constants
         # Send initial state snapshot on connect
         await ws.send_json({
             "type":     "connected",
             "stats":    db.get_stats(),
+            "mode":     "advisory" if constants.ADVISORY_MODE else "active",
             "sessions": [
                 {
                     "session_id": s["session_id"][:8] + "...",
@@ -781,11 +1348,13 @@ async def websocket_dashboard(ws: WebSocket):
 
 @app.get("/api/health")
 async def health():
+    import constants
     return {
         "status":   "ok",
         "system":   SYSTEM_NAME,
         "version":  SYSTEM_VERSION,
         "bank":     BANK_NAME,
+        "mode":     "advisory" if constants.ADVISORY_MODE else "active",
         "database": db.get_database_summary(),
     }
 

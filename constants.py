@@ -9,19 +9,63 @@
 
 
 # -----------------------------------------------------------------------------
-# ENROLLMENT PASSPHRASE
-# Chosen: "SecureAuth@India1" (17 characters)
-# Character map by position (1-indexed):
-#   1:S  2:e  3:c  4:u  5:r  6:e  7:A  8:u  9:t  10:h
-#   11:@ 12:I 13:n 14:d 15:i 16:a 17:1
+# ENROLLMENT PASSPHRASE — Dynamic per-user generation
+# Formula: First4(first_name) + First4(last_name) + @ + YY
+# Example: Hari Ahir, 2026  →  "HariAhir@26"  (exactly 11 characters)
 #
-# IMPORTANT: This passphrase is FIXED for the entire demo.
-# All team members must practice typing it 30+ times before demo day.
-# The behavioral baseline is built from this exact string.
+# Padding rule: if name segment is shorter than required, cycle from start.
+# Truncation rule: if name segment is longer, truncate to required length.
+#
+# Position map for 11-char passphrase (1-indexed):
+#   1-4 : First name (4 chars, e.g. "Hari")
+#   5-8 : Last name  (4 chars, e.g. "Ahir")
+#   9   : @ (always)
+#   10  : First digit of year suffix (e.g. '2')
+#   11  : Second digit of year suffix (e.g. '6')
 # -----------------------------------------------------------------------------
-ENROLLMENT_PASSPHRASE = "SecureAuth@India1"
-ENROLLMENT_PASSPHRASE_LENGTH = 17      # number of characters
-ENROLLMENT_PASSPHRASE_DISPLAY = "SecureAuth@India1"  # shown to user during enrollment
+ENROLLMENT_PASSPHRASE_LENGTH = 11      # fixed 11-char formula — LSTM compatible
+
+
+def _cycle_pad(s: str, length: int) -> str:
+    """Repeat string s cyclically until it reaches exactly `length` characters."""
+    if not s:
+        return "X" * length
+    result = ""
+    while len(result) < length:
+        result += s
+    return result[:length]
+
+
+def generate_passphrase(first_name: str, last_name: str, year: int = None) -> str:
+    """
+    Generate the user-specific 11-character behavioral enrollment passphrase.
+
+    Args:
+        first_name: User's first name (any length)
+        last_name:  User's last name (any length)
+        year:       Optional year override; defaults to current year
+
+    Returns:
+        11-character passphrase string, e.g. "HariAhir@26"
+
+    Examples:
+        generate_passphrase("Hari",  "Ahir") → "HariAhir@26"
+        generate_passphrase("Jo",    "Li")   → "JoJoLiLi@26"
+        generate_passphrase("Ali",   "Roy")  → "AliARoyR@26"
+        generate_passphrase("Suresh","Kumar")→ "SurEKuma@26"  (truncated)
+    """
+    import datetime
+    yr = year or datetime.datetime.now().year
+    yr_suffix = str(yr)[-2:]                         # "2026" → "26"
+
+    fn_part = _cycle_pad(first_name.capitalize(), 4)  # exactly 4 chars
+    ln_part = _cycle_pad(last_name.capitalize(),  4)  # exactly 4 chars
+
+    passphrase = f"{fn_part}{ln_part}@{yr_suffix}"  # 4+4+1+2 = 11 chars
+    assert len(passphrase) == ENROLLMENT_PASSPHRASE_LENGTH, (
+        f"Passphrase length mismatch: got {len(passphrase)}, expected {ENROLLMENT_PASSPHRASE_LENGTH}"
+    )
+    return passphrase
 
 
 # -----------------------------------------------------------------------------
@@ -153,15 +197,22 @@ FEATURES = {
 
     # --- Positional Digraph Features (5) ---
     # Digraph = gap between position N and N+1 (timing only, no key identity)
-    # Positions chosen from "SecureAuth@India1" for maximum rhythm variation:
-    #   Pos 1→2  : S→e  (opening stroke, sets base rhythm)
-    #   Pos 6→7  : e→A  (lowercase-to-uppercase shift — natural rhythm break)
-    #   Pos 9→10 : t→h  (fast common pair in most typists)
-    #   Pos 11→12: @→I  (special character to uppercase — usually a pause point)
-    #   Pos 15→16: i→a  (closing quick succession)
+    # Positions chosen from the 11-char dynamic passphrase formula
+    # (First4 + Last4 + @ + YY) for maximum rhythm variation:
+    #
+    #   Pos 1→2  : First two chars of first name (opening stroke, cold-hand rhythm)
+    #   Pos 4→5  : End of first name → Start of last name (ALWAYS Uppercase transition
+    #              regardless of name — most discriminative digraph position)
+    #   Pos 7→8  : Inside last name succession (end-of-word rhythm)
+    #   Pos 8→9  : Last char of last name → @ (ALWAYS letter→special char transition)
+    #   Pos 9→10 : @ → first digit of year (ALWAYS special→digit transition)
+    #
+    # Key insight: positions 4→5, 8→9, and 9→10 guarantee the SAME transition
+    # TYPE for every user regardless of their name. This makes the features
+    # cross-user comparable while remaining personally distinctive.
 
     "digraph_pos_1_2": {
-        "description":   "Inter-key gap: position 1 → 2 (opening stroke)",
+        "description":   "Inter-key gap: pos 1→2 (opening stroke, cold-hand rhythm)",
         "category":      "KEYSTROKE",
         "platform":      "WEB_AND_MOBILE",
         "min_std_floor": 8.0,      # ms
@@ -170,44 +221,44 @@ FEATURES = {
         "position_pair": (1, 2),
     },
 
-    "digraph_pos_6_7": {
-        "description":   "Inter-key gap: position 6 → 7 (case transition point)",
+    "digraph_pos_4_5": {
+        "description":   "Inter-key gap: pos 4→5 (first→last name junction, Uppercase transition)",
+        "category":      "KEYSTROKE",
+        "platform":      "WEB_AND_MOBILE",
+        "min_std_floor": 10.0,     # ms — case transitions vary more between people
+        "weight":        0.04,     # higher weight — shift-key timing is highly personal
+        "unit":          "ms",
+        "position_pair": (4, 5),
+    },
+
+    "digraph_pos_7_8": {
+        "description":   "Inter-key gap: pos 7→8 (end of last name succession)",
         "category":      "KEYSTROKE",
         "platform":      "WEB_AND_MOBILE",
         "min_std_floor": 8.0,
         "weight":        0.02,
         "unit":          "ms",
-        "position_pair": (6, 7),
+        "position_pair": (7, 8),
+    },
+
+    "digraph_pos_8_9": {
+        "description":   "Inter-key gap: pos 8→9 (last name → @ special char reach)",
+        "category":      "KEYSTROKE",
+        "platform":      "WEB_AND_MOBILE",
+        "min_std_floor": 12.0,     # ms — reaching for @ takes personal time
+        "weight":        0.04,     # higher weight — @ reach time is biometrically stable
+        "unit":          "ms",
+        "position_pair": (8, 9),
     },
 
     "digraph_pos_9_10": {
-        "description":   "Inter-key gap: position 9 → 10 (fast pair)",
+        "description":   "Inter-key gap: pos 9→10 (@ → digit, special-to-number recovery)",
         "category":      "KEYSTROKE",
         "platform":      "WEB_AND_MOBILE",
-        "min_std_floor": 8.0,
+        "min_std_floor": 10.0,
         "weight":        0.02,
         "unit":          "ms",
         "position_pair": (9, 10),
-    },
-
-    "digraph_pos_11_12": {
-        "description":   "Inter-key gap: position 11 → 12 (special char to uppercase)",
-        "category":      "KEYSTROKE",
-        "platform":      "WEB_AND_MOBILE",
-        "min_std_floor": 10.0,     # slightly higher floor — special char transitions vary more
-        "weight":        0.02,
-        "unit":          "ms",
-        "position_pair": (11, 12),
-    },
-
-    "digraph_pos_15_16": {
-        "description":   "Inter-key gap: position 15 → 16 (closing succession)",
-        "category":      "KEYSTROKE",
-        "platform":      "WEB_AND_MOBILE",
-        "min_std_floor": 8.0,
-        "weight":        0.02,
-        "unit":          "ms",
-        "position_pair": (15, 16),
     },
 
     # =========================================================================
@@ -506,6 +557,25 @@ DEVICE_MISMATCH_RISK_POINTS = 18   # Points added when device fingerprint doesn'
 # Number of top contributing features to report in the risk breakdown
 # -----------------------------------------------------------------------------
 EXPLAINABILITY_TOP_N = 4   # Show top 4 contributors in dashboard + fraud-ops alert
+
+
+# -----------------------------------------------------------------------------
+# ADVISORY MODE (Bonus B2)
+# When True, the system scores silently but never challenges or freezes users.
+# All risk scores are still computed and broadcast to the SOC dashboard.
+# Toggle via POST /api/admin/set-mode from the dashboard.
+# -----------------------------------------------------------------------------
+ADVISORY_MODE = False   # False = Active Mode (default); True = Advisory Mode
+
+
+# -----------------------------------------------------------------------------
+# PROGRESSIVE BASELINE DRIFT (Bonus B1)
+# After every GREEN session, the user's keystroke baseline is nudged
+# 5% toward the current session's values using an exponential moving average.
+# Prevents false positives from gradual natural typing drift.
+# Set to 0.0 to disable drift learning entirely.
+# -----------------------------------------------------------------------------
+BASELINE_DRIFT_WEIGHT = 0.05   # 5% toward current session per GREEN scoring event
 
 
 # -----------------------------------------------------------------------------

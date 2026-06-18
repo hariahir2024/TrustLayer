@@ -27,7 +27,9 @@ print(f"  mean_flight_time: {features['mean_flight_time']:.1f}ms")
 print(f"  typing_speed_cps: {features['typing_speed_cps']:.2f}")
 
 print("\n--- Testing enrollment ---")
-import database as db
+import db_sqlite as db
+db.init_db()
+db.reset_all()
 db.create_user("demo_hari")
 for i in range(5):
     result = ml.process_enrollment_sample("demo_hari", key_events)

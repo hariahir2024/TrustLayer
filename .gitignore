@@ -7,3 +7,11 @@ datasets/
 *.log
 .DS_Store
 Thumbs.db
+
+# Environments
+venv/
+
+# Local database & state files
+data/
+profiles/
+

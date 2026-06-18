@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
 
-import database as db
+import db_sqlite as db
 from constants import (
     FEATURES, KEYSTROKE_FEATURES, MOUSE_FEATURES, METADATA_FEATURES,
     CATEGORY_WEIGHTS, EXPLAINABILITY_TOP_N,
@@ -51,6 +51,10 @@ log = logging.getLogger("ml_engine")
 # =============================================================================
 _generic_keystroke_baseline: dict = {}   # {means: {}, stds: {}} from CMU dataset
 _generic_mouse_model: IsolationForest = None  # trained on BALABIT data
+
+_keystroke_sequences_cache = {}  # (username, device_class) -> list of np.ndarray
+_mouse_sequences_cache = {}      # (username, device_class) -> list of list
+
 
 import torch
 import torch.nn as nn
@@ -207,6 +211,24 @@ def load_generic_baselines() -> None:
     log.info("Generic baselines and deep models loaded and ready.")
 
 
+def restore_all_user_profiles() -> None:
+    """
+    Reload all enrolled behavioral profiles from SQLite into ml_engine memory.
+    Called at server startup so user baselines survive server restarts.
+    Each (username, device_class) profile is loaded into the in-memory cache
+    so scoring can happen immediately without re-enrollment.
+    """
+    import db_sqlite as db
+    profiles = db.load_all_profiles()
+    for (username, device_class), profile in profiles.items():
+        if profile["enrolled"] and profile["keystroke_means"]:
+            # Restore the keystroke LSTM from disk if present
+            lstm = db.get_keystroke_lstm(username, device_class)
+            if lstm:
+                log.debug(f"Restored keystroke LSTM: {username}/{device_class}")
+    log.info(f"Restored {len(profiles)} enrolled user profile(s) from SQLite.")
+
+
 def _load_cmu_baseline() -> dict:
     """
     Load CMU keystroke dataset and compute population-level means and stds.
@@ -253,10 +275,10 @@ def _load_cmu_baseline() -> dict:
             "completion_time":   float(np.mean(total_times)),
             # Positional digraphs — approximate from overall flight time mean
             "digraph_pos_1_2":   float(np.mean(all_flights)),
-            "digraph_pos_6_7":   float(np.mean(all_flights) * 1.1),  # case shift = slightly slower
-            "digraph_pos_9_10":  float(np.mean(all_flights) * 0.9),  # fast pair
-            "digraph_pos_11_12": float(np.mean(all_flights) * 1.2),  # special char = pause
-            "digraph_pos_15_16": float(np.mean(all_flights) * 0.95),
+            "digraph_pos_4_5":   float(np.mean(all_flights) * 1.15),  # name junction (uppercase)
+            "digraph_pos_7_8":   float(np.mean(all_flights) * 0.95),  # end-of-name succession
+            "digraph_pos_8_9":   float(np.mean(all_flights) * 1.25),  # letter → @ (reach pause)
+            "digraph_pos_9_10":  float(np.mean(all_flights) * 1.10),  # @ → digit recovery
         }
 
         # Population stds — natural variation between people
@@ -272,10 +294,10 @@ def _load_cmu_baseline() -> dict:
             "first_key_latency": 200.0,
             "completion_time":   float(np.std(total_times)),
             "digraph_pos_1_2":   float(np.std(all_flights)),
-            "digraph_pos_6_7":   float(np.std(all_flights)),
+            "digraph_pos_4_5":   float(np.std(all_flights) * 1.1),
+            "digraph_pos_7_8":   float(np.std(all_flights)),
+            "digraph_pos_8_9":   float(np.std(all_flights) * 1.2),
             "digraph_pos_9_10":  float(np.std(all_flights)),
-            "digraph_pos_11_12": float(np.std(all_flights)),
-            "digraph_pos_15_16": float(np.std(all_flights)),
         }
 
         log.info(f"CMU baseline: mean_hold={means['mean_hold_time']:.1f}ms, "
@@ -307,10 +329,10 @@ def _hardcoded_keystroke_fallback() -> dict:
             "first_key_latency": 350.0,
             "completion_time":   2800.0, # ms
             "digraph_pos_1_2":   115.0,
-            "digraph_pos_6_7":   128.0,
-            "digraph_pos_9_10":  103.0,
-            "digraph_pos_11_12": 138.0,
-            "digraph_pos_15_16": 109.0,
+            "digraph_pos_4_5":   132.0,   # name junction slightly slower
+            "digraph_pos_7_8":   109.0,
+            "digraph_pos_8_9":   145.0,   # @ reach pause
+            "digraph_pos_9_10":  118.0,   # @ → digit recovery
         },
         "stds": {
             "mean_hold_time":    28.0,
@@ -324,10 +346,10 @@ def _hardcoded_keystroke_fallback() -> dict:
             "first_key_latency": 200.0,
             "completion_time":   900.0,
             "digraph_pos_1_2":   40.0,
-            "digraph_pos_6_7":   40.0,
-            "digraph_pos_9_10":  40.0,
-            "digraph_pos_11_12": 40.0,
-            "digraph_pos_15_16": 40.0,
+            "digraph_pos_4_5":   44.0,
+            "digraph_pos_7_8":   40.0,
+            "digraph_pos_8_9":   48.0,
+            "digraph_pos_9_10":  42.0,
         }
     }
 
@@ -567,10 +589,10 @@ def extract_keystroke_features(key_events: list, field_focus_ts: float = None) -
         "completion_time":    float(completion),
         # Positional digraphs
         "digraph_pos_1_2":    _get_digraph(1, 2),
-        "digraph_pos_6_7":    _get_digraph(6, 7),
-        "digraph_pos_9_10":   _get_digraph(9, 10),
-        "digraph_pos_11_12":  _get_digraph(11, 12),
-        "digraph_pos_15_16":  _get_digraph(15, 16),
+        "digraph_pos_4_5":    _get_digraph(4, 5),   # name junction — uppercase transition
+        "digraph_pos_7_8":    _get_digraph(7, 8),   # end of last name
+        "digraph_pos_8_9":    _get_digraph(8, 9),   # letter → @
+        "digraph_pos_9_10":   _get_digraph(9, 10),  # @ → digit
     }
 
 
@@ -695,7 +717,7 @@ def extract_metadata_features(session: dict, device_fp_enrolled: str | None) -> 
 
 def _extract_keystroke_sequence(key_events: list) -> np.ndarray | None:
     """
-    Extract a sequence of shape (11, 2) [hold_ms, flight_ms] for positions 1 to 11.
+    Extract a sequence of shape (ENROLLMENT_PASSPHRASE_LENGTH, 2) [hold_ms, flight_ms] for positions 1 to ENROLLMENT_PASSPHRASE_LENGTH.
     """
     if not key_events:
         return None
@@ -706,14 +728,14 @@ def _extract_keystroke_sequence(key_events: list) -> np.ndarray | None:
         pos = ev.get("position", 0)
         ts = ev.get("timestamp", 0)
         typ = ev.get("event", "")
-        if pos < 1 or pos > 11:
+        if pos < 1 or pos > ENROLLMENT_PASSPHRASE_LENGTH:
             continue
         if typ == "down":
             downs[pos] = ts
         elif typ == "up":
             ups[pos] = ts
             
-    seq = np.zeros((11, 2), dtype=np.float32)
+    seq = np.zeros((ENROLLMENT_PASSPHRASE_LENGTH, 2), dtype=np.float32)
     
     default_hold = 100.0
     default_flight = 150.0
@@ -723,14 +745,14 @@ def _extract_keystroke_sequence(key_events: list) -> np.ndarray | None:
         default_hold = norm.get("hold_mean", default_hold)
         default_flight = norm.get("flight_mean", default_flight)
         
-    for p in range(1, 12):
+    for p in range(1, ENROLLMENT_PASSPHRASE_LENGTH + 1):
         i = p - 1
         if p in downs and p in ups and ups[p] > downs[p]:
             seq[i, 0] = ups[p] - downs[p]
         else:
             seq[i, 0] = default_hold
             
-        if p < 11:
+        if p < ENROLLMENT_PASSPHRASE_LENGTH:
             nxt = p + 1
             if p in ups and nxt in downs:
                 seq[i, 1] = downs[nxt] - ups[p]
@@ -742,15 +764,16 @@ def _extract_keystroke_sequence(key_events: list) -> np.ndarray | None:
     return seq
 
 
-def _train_individual_keystroke_lstm(username: str) -> None:
+def _train_individual_keystroke_lstm(username: str, device_class: str = "DESKTOP") -> None:
     """
     Fine-tune the generic keystroke LSTM autoencoder on the user's enrollment sequences.
     """
-    user = db.get_user(username)
-    if not user or not user.get("enrollment_sequences"):
+    cache_key = (username, device_class)
+    seq_list = _keystroke_sequences_cache.get(cache_key, [])
+    if not seq_list:
         return
         
-    sequences = np.array(user["enrollment_sequences"], dtype=np.float32)
+    sequences = np.array(seq_list, dtype=np.float32)
     
     if _ml_metadata and "keystroke_model" in _ml_metadata:
         norm = _ml_metadata["keystroke_model"]["normalization"]
@@ -782,12 +805,12 @@ def _train_individual_keystroke_lstm(username: str) -> None:
         optimizer.step()
         
     model.eval()
-    db.save_keystroke_lstm(username, model)
-    log.info(f"Individual keystroke LSTM fine-tuned and saved for {username}.")
+    db.save_keystroke_lstm(username, model, device_class)
+    log.info(f"Individual keystroke LSTM fine-tuned and saved for {username} ({device_class}).")
 
 
 def process_enrollment_sample(username: str, key_events: list,
-                               field_focus_ts: float = None) -> dict:
+                               field_focus_ts: float = None, device_class: str = "DESKTOP") -> dict:
     """
     Process one passphrase typing attempt during enrollment.
     Returns {"count": int, "complete": bool, "message": str}
@@ -795,8 +818,9 @@ def process_enrollment_sample(username: str, key_events: list,
     features = extract_keystroke_features(key_events, field_focus_ts)
 
     if features is None:
+        profile = db.get_behavioral_profile(username, device_class)
         return {
-            "count":    db.get_user(username)["enrollment_count"] if db.user_exists(username) else 0,
+            "count":    profile["enrollment_count"] if profile else 0,
             "complete": False,
             "message":  "Could not extract features — please type the full passphrase",
         }
@@ -807,14 +831,17 @@ def process_enrollment_sample(username: str, key_events: list,
     # Store raw sequence for LSTM training
     seq = _extract_keystroke_sequence(key_events)
     if seq is not None:
-        db.get_user(username)["enrollment_sequences"].append(seq)
+        cache_key = (username, device_class)
+        if cache_key not in _keystroke_sequences_cache:
+            _keystroke_sequences_cache[cache_key] = []
+        _keystroke_sequences_cache[cache_key].append(seq)
 
-    count = db.add_enrollment_sample(username, features)
+    count = db.add_enrollment_sample(username, features, device_class)
 
     if count >= ENROLLMENT_REQUIRED_SAMPLES:
-        _build_user_keystroke_baseline(username)
+        _build_user_keystroke_baseline(username, device_class)
         try:
-            _train_individual_keystroke_lstm(username)
+            _train_individual_keystroke_lstm(username, device_class)
         except Exception as e:
             log.error(f"Failed to train individual keystroke LSTM: {e}")
             
@@ -832,16 +859,16 @@ def process_enrollment_sample(username: str, key_events: list,
     }
 
 
-def _build_user_keystroke_baseline(username: str) -> None:
+def _build_user_keystroke_baseline(username: str, device_class: str = "DESKTOP") -> None:
     """
     Compute per-feature mean and std from all enrollment samples.
     Apply MIN_STD_FLOOR to prevent division-by-zero in Z-Score engine.
     """
-    user = db.get_user(username)
-    if not user or not user["enrollment_samples"]:
+    profile = db.get_behavioral_profile(username, device_class)
+    if not profile or not profile.get("enrollment_seqs"):
         return
 
-    samples = user["enrollment_samples"]
+    samples = profile["enrollment_seqs"]
     means, stds = {}, {}
 
     for feature_name in KEYSTROKE_FEATURES:
@@ -862,10 +889,14 @@ def _build_user_keystroke_baseline(username: str) -> None:
         means[feature_name] = computed_mean
         stds[feature_name]  = safe_std
 
-    db.save_keystroke_baseline(username, means, stds)
+    db.save_keystroke_baseline(username, means, stds, device_class)
     log.info(f"Baseline built for {username}: "
              f"hold={means.get('mean_hold_time', 0):.1f}ms, "
              f"flight={means.get('mean_flight_time', 0):.1f}ms")
+
+    # --- B1: Persist newly-built baseline to SQLite immediately ---
+    import db_sqlite
+    db_sqlite.save_keystroke_baseline(username, means, stds, device_class="DESKTOP")
 
 
 def _extract_mouse_sequences(mouse_samples: list) -> list[np.ndarray]:
@@ -914,17 +945,18 @@ def _extract_mouse_sequences(mouse_samples: list) -> list[np.ndarray]:
     return sequences
 
 
-def _train_individual_mouse_lstm(username: str) -> None:
+def _train_individual_mouse_lstm(username: str, device_class: str = "DESKTOP") -> None:
     """
     Fine-tune the generic mouse LSTM autoencoder on the user's collected mouse sequences.
     """
-    user = db.get_user(username)
-    if not user or not user.get("mouse_training_sequences"):
+    cache_key = (username, device_class)
+    seqs_list = _mouse_sequences_cache.get(cache_key, [])
+    if not seqs_list:
         return
         
     # Combine all sequences from their session history
     all_seqs = []
-    for seq_list in user["mouse_training_sequences"]:
+    for seq_list in seqs_list:
         all_seqs.extend(seq_list)
         
     if len(all_seqs) < 10:
@@ -953,8 +985,7 @@ def _train_individual_mouse_lstm(username: str) -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     criterion = nn.MSELoss()
     
-    x_tensor = torch.tensor(sequences, dtype=torch.float32)
-    dataset = TensorDataset(x_tensor)
+    dataset = TensorDataset(torch.tensor(sequences, dtype=torch.float32))
     loader = DataLoader(dataset, batch_size=32, shuffle=True)
     
     for epoch in range(5):
@@ -966,11 +997,11 @@ def _train_individual_mouse_lstm(username: str) -> None:
             optimizer.step()
             
     model.eval()
-    db.save_mouse_lstm(username, model)
-    log.info(f"Individual mouse LSTM fine-tuned and saved for {username} on {len(sequences)} sequences.")
+    db.save_mouse_lstm(username, model, device_class)
+    log.info(f"Individual mouse LSTM fine-tuned and saved for {username} ({device_class}) on {len(sequences)} sequences.")
 
 
-def add_mouse_training_sample(username: str, mouse_features: dict, mouse_samples: list = None) -> None:
+def add_mouse_training_sample(username: str, mouse_features: dict, mouse_samples: list = None, device_class: str = "DESKTOP") -> None:
     """
     Add a mouse feature vector to the user's training data.
     Once 10+ samples collected, train individual Isolation Forest.
@@ -978,30 +1009,40 @@ def add_mouse_training_sample(username: str, mouse_features: dict, mouse_samples
     if not db.user_exists(username):
         return
 
-    user = db.get_user(username)
+    profile = db.get_behavioral_profile(username, device_class)
+    if not profile:
+        return
+
+    vectors = profile.get("mouse_vectors", []) or []
     if mouse_features:
         vec = _mouse_features_to_vector(mouse_features)
-        user["mouse_training_vectors"].append(vec)
+        vectors.append(vec)
 
         # Also store raw mouse sequences for LSTM training
         if mouse_samples:
             seqs = _extract_mouse_sequences(mouse_samples)
             if seqs:
-                user["mouse_training_sequences"].append(seqs)
+                cache_key = (username, device_class)
+                if cache_key not in _mouse_sequences_cache:
+                    _mouse_sequences_cache[cache_key] = []
+                _mouse_sequences_cache[cache_key].append(seqs)
+
+        # Save to DB
+        db.update_mouse_vectors(username, vectors, device_class)
 
         # Train individual model once we have enough sessions
-        if len(user["mouse_training_vectors"]) >= 10:
-            _train_individual_mouse_model(username)
+        if len(vectors) >= 10:
+            _train_individual_mouse_model(username, device_class)
             try:
-                _train_individual_mouse_lstm(username)
+                _train_individual_mouse_lstm(username, device_class)
             except Exception as e:
                 log.error(f"Failed to train individual mouse LSTM: {e}")
 
 
-def _train_individual_mouse_model(username: str) -> None:
+def _train_individual_mouse_model(username: str, device_class: str = "DESKTOP") -> None:
     """Fit an Isolation Forest on the user's own mouse sessions."""
-    user = db.get_user(username)
-    vectors = user.get("mouse_training_vectors", [])
+    profile = db.get_behavioral_profile(username, device_class)
+    vectors = profile.get("mouse_vectors", []) if profile else []
 
     if len(vectors) < 5:
         return
@@ -1009,13 +1050,12 @@ def _train_individual_mouse_model(username: str) -> None:
     X = np.array(vectors)
     model = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
     model.fit(X)
-    db.save_mouse_model(username, model, vectors)
-    log.info(f"Individual mouse model trained for {username} on {len(vectors)} sessions.")
+    db.save_mouse_model(username, model, vectors, device_class)
+    log.info(f"Individual mouse model trained for {username} ({device_class}) on {len(vectors)} sessions.")
 
 
 # =============================================================================
 # 4. SCORING ENGINES
-# =============================================================================
 
 def _z_to_risk(z: float) -> float:
     """
@@ -1677,7 +1717,24 @@ def score_session(
 
     # Add mouse features to user's training data
     if mouse_features:
-        add_mouse_training_sample(username, mouse_features, mouse_samples)
+        device_class = session.get("device_class", "DESKTOP")
+        add_mouse_training_sample(username, mouse_features, mouse_samples, device_class)
+
+    # ── B1: Progressive Baseline Drift ────────────────────────────
+    # After every GREEN session, gently nudge the user's keystroke
+    # baseline toward the current session's values.
+    import constants as _c
+    device_class = session.get("device_class", "DESKTOP")
+    if band == "GREEN" and keystroke_features and _c.BASELINE_DRIFT_WEIGHT > 0:
+        import db_sqlite as _db_sql
+        _db_sql.update_keystroke_baseline_drift(
+            username, device_class, keystroke_features, _c.BASELINE_DRIFT_WEIGHT
+        )
+
+    # ── B2: Advisory Mode override ────────────────────────────────
+    # If advisory mode is on, never apply friction to the user.
+    if _c.ADVISORY_MODE and action not in ("CONTINUE", "MONITOR"):
+        action = "MONITOR"   # silent observe only
 
     return {
         **result,

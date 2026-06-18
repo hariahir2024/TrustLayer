@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bharat Suraksha Bank — Premium Internet Banking</title>
   <link rel="stylesheet" href="/static/css/style.css?v=4">
+  <link rel="manifest" href="/static/manifest.json">
   <style>
     /* Premium layout overrides */
     .bank-logo {
@@ -163,17 +164,99 @@
        ========================================== -->
   <div id="auth-container" style="max-width: 500px; margin: 5rem auto 0; padding: 0 1.5rem;">
     
-    <!-- VIEW 0: USERNAME SEARCH & GATE -->
+    <!-- VIEW 0: LOGIN GATE -->
     <div id="username-view" class="card card-glass">
       <h2 class="mb-2 text-center">Welcome to Bharat Suraksha Bank</h2>
-      <p class="text-muted text-center text-sm mb-4">Secure Online Banking Login</p>
+      <p class="text-muted text-center text-sm mb-4">Secure NetBanking Login</p>
       
-      <div class="form-group mb-4">
+      <div class="form-group mb-3">
         <label class="form-label" for="start-username">Username</label>
         <input type="text" id="start-username" class="form-input" placeholder="Enter NetBanking username..." autocomplete="off" required>
       </div>
 
+      <div class="form-group mb-4">
+        <label class="form-label" for="start-password">Password</label>
+        <input type="password" id="start-password" class="form-input" placeholder="Enter NetBanking password..." autocomplete="off" required>
+      </div>
+
       <button id="btn-next-step" class="btn btn-primary btn-block">Continue</button>
+      
+      <div class="text-center mt-3 text-sm">
+        <span class="text-muted">New to NetBanking?</span>
+        <a href="#" id="link-show-register" class="text-brand fw-600" style="text-decoration: none; margin-left: 0.25rem;">Register Here</a>
+      </div>
+    </div>
+
+    <!-- VIEW 0.5: REGISTRATION WIZARD -->
+    <div id="register-view" class="card card-glass hidden" style="max-height: 85vh; overflow-y: auto; padding-right: 0.5rem;">
+      <h2 class="mb-2 text-center">Create NetBanking Account</h2>
+      <p class="text-muted text-center text-sm mb-3">Register your details to get started</p>
+      
+      <div class="form-group mb-2">
+        <label class="form-label" for="reg-username">Username</label>
+        <input type="text" id="reg-username" class="form-input" placeholder="Choose username..." autocomplete="off" required>
+      </div>
+
+      <div class="form-group mb-2">
+        <label class="form-label" for="reg-password">Password</label>
+        <input type="password" id="reg-password" class="form-input" placeholder="Choose password..." autocomplete="off" required>
+      </div>
+
+      <div class="flex gap-2">
+        <div class="form-group mb-2 flex-1">
+          <label class="form-label" for="reg-first-name">First Name</label>
+          <input type="text" id="reg-first-name" class="form-input" placeholder="First Name" autocomplete="off" required>
+        </div>
+        <div class="form-group mb-2 flex-1">
+          <label class="form-label" for="reg-last-name">Last Name</label>
+          <input type="text" id="reg-last-name" class="form-input" placeholder="Last Name" autocomplete="off" required>
+        </div>
+      </div>
+
+      <div class="form-group mb-2">
+        <label class="form-label" for="reg-email">Email Address</label>
+        <input type="email" id="reg-email" class="form-input" placeholder="name@domain.com" autocomplete="off" required>
+      </div>
+
+      <div class="form-group mb-2">
+        <label class="form-label" for="reg-mobile">Mobile Number</label>
+        <input type="text" id="reg-mobile" class="form-input" placeholder="10-digit mobile number" autocomplete="off" required>
+      </div>
+
+      <div class="flex gap-2">
+        <div class="form-group mb-3 flex-1">
+          <label class="form-label" for="reg-city">City</label>
+          <input type="text" id="reg-city" class="form-input" placeholder="City" autocomplete="off" required>
+        </div>
+        <div class="form-group mb-3 flex-1">
+          <label class="form-label" for="reg-dob">Date of Birth</label>
+          <input type="date" id="reg-dob" class="form-input" required>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-2">
+        <button id="reg-back-login" class="btn btn-secondary btn-block">Back</button>
+        <button id="reg-submit-btn" class="btn btn-primary btn-block">Register</button>
+      </div>
+    </div>
+
+    <!-- VIEW 0.6: ACCOUNT CREATED CARD -->
+    <div id="created-view" class="card card-glass hidden text-center">
+      <h2 class="mb-2 text-center" style="color: var(--green);">✓ Account Created!</h2>
+      <p class="text-muted text-sm mb-4">Your NetBanking account has been successfully initialized.</p>
+      
+      <div class="mb-4" style="background: var(--bg-surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--border-color);">
+        <div class="text-sm text-secondary mb-1">Generated Account Number</div>
+        <div id="created-account-number" class="text-xl fw-700 text-brand text-mono mb-3">BSB0000000</div>
+        
+        <div class="text-sm text-secondary mb-1">Your Dynamic Behavioral Passphrase</div>
+        <div id="created-passphrase" class="text-xl fw-700 text-cyan text-mono p-2" style="background: rgba(6, 182, 212, 0.08); border-radius: 4px;">Passphrase@123</div>
+        <p class="text-muted text-xs mt-2" style="max-width: 90%; margin-left: auto; margin-right: auto; line-height: 1.3;">
+          IMPORTANT: You must memorize this passphrase. This is your second-factor behavioral biometric signature. You will type this to log in.
+        </p>
+      </div>
+
+      <button id="created-proceed-btn" class="btn btn-primary btn-block">Proceed to Login / Enrollment</button>
     </div>
 
     <!-- VIEW 1: ENROLLMENT WIZARD -->
@@ -285,13 +368,28 @@
           🏠 Overview Dashboard
         </div>
         <div class="bank-sidebar-item" id="tab-nav-transfer">
-          💸 Send Money
+          💸 Fund Transfer
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-bills">
+          🔌 Bill Payments
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-upi">
+          📱 UPI Transfers
         </div>
         <div class="bank-sidebar-item" id="tab-nav-payees">
           👥 Manage Payees
         </div>
         <div class="bank-sidebar-item" id="tab-nav-statements">
-          📄 Account Statements
+          📄 Statements & Audit
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-fd">
+          💰 Fixed Deposits
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-profile">
+          👤 Profile Settings
+        </div>
+        <div class="bank-sidebar-item" id="tab-nav-support">
+          🛠️ Customer Care
         </div>
       </nav>
 
@@ -514,6 +612,285 @@
         </div>
       </div>
 
+      <!-- TAB 5: BILL PAYMENTS -->
+      <div id="page-bills" class="card card-glass hidden" style="max-width: 650px;">
+        <h2 class="mb-1">🔌 Utility Bill Payments</h2>
+        <p class="text-sm text-secondary mb-4">Pay utility, telecom, and insurance bills instantly.</p>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="bill-category">Select Biller / Category</label>
+          <select id="bill-category" class="form-input">
+            <option value="Electricity">Electricity Bill (State Discoms)</option>
+            <option value="Water">Water Supply Authority</option>
+            <option value="Gas">Piped Gas Authority</option>
+            <option value="Mobile Recharge">Mobile Prepaid / Postpaid Recharge</option>
+            <option value="Insurance">Life / General Insurance Premium</option>
+          </select>
+        </div>
+
+        <div class="form-group mb-3">
+          <label class="form-label" for="bill-consumer-id">Consumer ID / Mobile Number</label>
+          <input type="text" id="bill-consumer-id" class="form-input" placeholder="e.g. 102983748 or 9876543210" autocomplete="off" required>
+        </div>
+
+        <div class="form-group mb-4">
+          <label class="form-label" for="bill-amount">Payment Amount (₹)</label>
+          <input type="number" id="bill-amount" class="form-input" placeholder="Enter amount to pay..." min="1" step="any" required>
+        </div>
+
+        <button id="bill-submit-btn" class="btn btn-primary btn-block">Authorize & Pay Bill</button>
+      </div>
+
+      <!-- TAB 6: UPI TRANSFERS -->
+      <div id="page-upi" class="flex flex-col gap-6 hidden" style="max-width: 750px;">
+        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem;">
+          
+          <div class="card card-glass">
+            <h2 class="mb-1">📱 UPI Instant Transfer</h2>
+            <p class="text-sm text-secondary mb-4">Transfer money instantly to any VPA / UPI ID.</p>
+
+            <div class="form-group mb-3">
+              <label class="form-label" for="upi-vpa">Recipient VPA / UPI ID</label>
+              <input type="text" id="upi-vpa" class="form-input text-mono" placeholder="e.g. username@okaxis" autocomplete="off" required>
+            </div>
+
+            <div class="form-group mb-4">
+              <label class="form-label" for="upi-amount">Amount (₹)</label>
+              <input type="number" id="upi-amount" class="form-input" placeholder="Enter transfer amount..." min="1" required>
+            </div>
+
+            <button id="upi-submit-btn" class="btn btn-primary btn-block">Send Money via UPI</button>
+          </div>
+
+          <div class="card card-glass text-center flex flex-col items-center justify-center">
+            <h3 class="mb-2">Your Personal QR Code</h3>
+            <p class="text-xs text-muted mb-4">Scan this code to receive funds into your savings account.</p>
+            
+            <div style="background: white; padding: 1rem; border-radius: var(--radius); margin: 0 auto; width: 170px; height: 170px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color);">
+              <div style="position: relative; width: 150px; height: 150px; background: repeating-conic-gradient(from 45deg, #000 0% 25%, #fff 0% 50%) 50% / 20px 20px;">
+                <div style="position: absolute; top: 30px; left: 30px; width: 90px; height: 90px; background: white; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; color: var(--brand);">BSB UPI</div>
+              </div>
+            </div>
+            
+            <p class="text-sm text-brand text-mono mt-4 fw-600" id="upi-my-vpa">username@bsb</p>
+          </div>
+          
+        </div>
+      </div>
+
+      <!-- TAB 7: FIXED DEPOSITS -->
+      <div id="page-fd" class="flex flex-col gap-6 hidden" style="max-width: 800px;">
+        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem;">
+          
+          <div class="card card-glass">
+            <h2 class="mb-1">💰 Book Fixed Deposit</h2>
+            <p class="text-sm text-secondary mb-4">Invest your savings in high-yield Fixed Deposits.</p>
+
+            <div class="form-group mb-3">
+              <label class="form-label" for="fd-amount">Principal Amount (₹)</label>
+              <input type="number" id="fd-amount" class="form-input" placeholder="Min ₹10,000" min="10000" required>
+            </div>
+
+            <div class="form-group mb-3">
+              <label class="form-label" for="fd-tenure">Tenure (Years)</label>
+              <select id="fd-tenure" class="form-input">
+                <option value="1" data-rate="6.8">1 Year (6.8% p.a.)</option>
+                <option value="3" data-rate="7.2">3 Years (7.2% p.a.)</option>
+                <option value="5" data-rate="7.5">5 Years (7.5% p.a.)</option>
+              </select>
+            </div>
+
+            <div class="mb-4" style="background: rgba(6, 182, 212, 0.05); padding: 0.75rem; border-radius: var(--radius); border: 1px dashed var(--cyan);">
+              <div class="flex justify-between text-sm mb-1">
+                <span class="text-secondary">Maturity Amount:</span>
+                <span class="fw-700 text-cyan" id="fd-calc-maturity">₹ 10,680.00</span>
+              </div>
+              <div class="flex justify-between text-sm">
+                <span class="text-secondary">Interest Earned:</span>
+                <span class="fw-700 text-green" id="fd-calc-interest">₹ 680.00</span>
+              </div>
+            </div>
+
+            <button id="fd-submit-btn" class="btn btn-primary btn-block">Confirm FD Booking</button>
+          </div>
+
+          <div class="card card-glass">
+            <h3 class="mb-3">FD Rate Card</h3>
+            <div class="flex flex-col gap-3">
+              <div class="p-2 flex justify-between items-center" style="background: var(--bg-surface); border-radius: 4px;">
+                <div>
+                  <div class="fw-600 text-sm">Short Term</div>
+                  <div class="text-xs text-muted">1 Year</div>
+                </div>
+                <div class="text-brand fw-700 text-lg">6.80%</div>
+              </div>
+              
+              <div class="p-2 flex justify-between items-center" style="background: var(--bg-surface); border-radius: 4px;">
+                <div>
+                  <div class="fw-600 text-sm">Medium Term</div>
+                  <div class="text-xs text-muted">3 Years</div>
+                </div>
+                <div class="text-cyan fw-700 text-lg">7.20%</div>
+              </div>
+
+              <div class="p-2 flex justify-between items-center" style="background: var(--bg-surface); border-radius: 4px;">
+                <div>
+                  <div class="fw-600 text-sm">Long Term</div>
+                  <div class="text-xs text-muted">5 Years</div>
+                </div>
+                <div class="text-green fw-700 text-lg">7.50%</div>
+              </div>
+            </div>
+            
+            <div class="text-xs text-muted mt-4">
+              * Senior citizens qualify for an additional +0.50% interest p.a. on all tenures.
+            </div>
+          </div>
+          
+        </div>
+      </div>
+
+      <!-- TAB 8: PROFILE & SECURITY CENTRE -->
+      <div id="page-profile" class="flex flex-col gap-6 hidden" style="max-width: 800px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+          
+          <div class="card card-glass">
+            <h2 class="mb-3">👤 Personal Profile</h2>
+            <div class="flex flex-col gap-2 text-sm">
+              <div class="flex justify-between border-b pb-1" style="border-bottom: 1px solid var(--border-color);">
+                <span class="text-secondary">First Name</span>
+                <span class="fw-600 text-brand" id="prof-first-name">-</span>
+              </div>
+              <div class="flex justify-between border-b pb-1" style="border-bottom: 1px solid var(--border-color);">
+                <span class="text-secondary">Last Name</span>
+                <span class="fw-600 text-brand" id="prof-last-name">-</span>
+              </div>
+              <div class="flex justify-between border-b pb-1" style="border-bottom: 1px solid var(--border-color);">
+                <span class="text-secondary">Email</span>
+                <span class="fw-600" id="prof-email">-</span>
+              </div>
+              <div class="flex justify-between border-b pb-1" style="border-bottom: 1px solid var(--border-color);">
+                <span class="text-secondary">Mobile</span>
+                <span class="fw-600" id="prof-mobile">-</span>
+              </div>
+              <div class="flex justify-between border-b pb-1" style="border-bottom: 1px solid var(--border-color);">
+                <span class="text-secondary">City</span>
+                <span class="fw-600" id="prof-city">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card card-glass">
+            <h3 class="mb-3">🔒 Change NetBanking Password</h3>
+            
+            <div class="form-group mb-2">
+              <label class="form-label" for="prof-old-pass">Current Password</label>
+              <input type="password" id="prof-old-pass" class="form-input" placeholder="Enter current password...">
+            </div>
+
+            <div class="form-group mb-3">
+              <label class="form-label" for="prof-new-pass">New Password</label>
+              <input type="password" id="prof-new-pass" class="form-input" placeholder="Enter new password...">
+            </div>
+
+            <button id="prof-pass-btn" class="btn btn-secondary btn-block">Update Password</button>
+          </div>
+          
+        </div>
+
+        <div class="card card-glass">
+          <h3 class="mb-1">🛡️ Login History & Audit Centre</h3>
+          <p class="text-sm text-secondary mb-4">Audit log of the last 5 security events recorded for your credentials.</p>
+          
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Date & Time</th>
+                <th>Device Class</th>
+                <th>IP Address</th>
+                <th>Risk Score</th>
+                <th>Authentication Status</th>
+              </tr>
+            </thead>
+            <tbody id="profile-audit-table-body">
+              <!-- Loaded dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TAB 9: CUSTOMER CARE -->
+      <div id="page-support" class="flex flex-col gap-6 hidden" style="max-width: 800px;">
+        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem;">
+          
+          <div class="card card-glass">
+            <h2 class="mb-1">🛠️ Log a Support Ticket</h2>
+            <p class="text-sm text-secondary mb-4">Report discrepancies, frauds, or general inquiries to customer care.</p>
+
+            <div class="form-group mb-3">
+              <label class="form-label" for="support-category">Inquiry Category</label>
+              <select id="support-category" class="form-input">
+                <option value="Transaction Discrepancy">Transaction Discrepancy</option>
+                <option value="Suspicious Alert Override">Suspicious Alert / Security Override</option>
+                <option value="Card Blocking">Card Blocking Request</option>
+                <option value="KYC Updates">KYC Queries</option>
+              </select>
+            </div>
+
+            <div class="form-group mb-4">
+              <label class="form-label" for="support-message">Description</label>
+              <textarea id="support-message" class="form-input" rows="4" placeholder="Detail your issue here..." style="resize: none;" required></textarea>
+            </div>
+
+            <button id="support-submit-btn" class="btn btn-primary btn-block">Submit Ticket</button>
+          </div>
+
+          <div class="card card-glass">
+            <h3 class="mb-3">Frequently Asked Questions</h3>
+            <div class="flex flex-col gap-3">
+              <details style="background: var(--bg-surface); padding: 0.5rem; border-radius: 4px; cursor: pointer;">
+                <summary class="fw-600 text-sm">What is BehaviorShield protection?</summary>
+                <p class="text-xs text-muted mt-2">
+                  BehaviorShield uses advanced behavioral biometrics to monitor your typing cadence and mouse movement speed. Even if an attacker steals your passwords, they cannot duplicate your movement rhythm, preventing fraud.
+                </p>
+              </details>
+              
+              <details style="background: var(--bg-surface); padding: 0.5rem; border-radius: 4px; cursor: pointer;">
+                <summary class="fw-600 text-sm">How does the 24-hour payee cooldown work?</summary>
+                <p class="text-xs text-muted mt-2">
+                  When you register a new payee, there is a 24-hour security window. During this time, transfers to that payee are limited to ₹5,000 as a safeguard against immediate transfer attempts by intruders.
+                </p>
+              </details>
+
+              <details style="background: var(--bg-surface); padding: 0.5rem; border-radius: 4px; cursor: pointer;">
+                <summary class="fw-600 text-sm">What should I do if my account is frozen?</summary>
+                <p class="text-xs text-muted mt-2">
+                  If the system detects anomalies, it may freeze the session. Please contact the security operations desk (our demo dashboard unfreeze control) to unfreeze the session.
+                </p>
+              </details>
+            </div>
+          </div>
+          
+        </div>
+
+        <div class="card card-glass">
+          <h3 class="mb-2">Your Registered Care Tickets</h3>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Ticket ID</th>
+                <th>Category</th>
+                <th>Description Summary</th>
+                <th>Logged At</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="support-tickets-table-body">
+              <!-- Loaded dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
     </main>
 
   </div>

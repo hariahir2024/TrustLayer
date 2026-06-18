@@ -43,13 +43,22 @@ const BehaviorShield = (function() {
      * Generate the device fingerprint object to be sent to /api/login
      */
     function getDeviceFingerprint() {
+        const width = window.innerWidth;
+        const ua = navigator.userAgent.toLowerCase();
+        let deviceClass = "DESKTOP";
+        if (/ipad|tablet|playbook|silk/i.test(ua) || (width >= 768 && width <= 1024)) {
+            deviceClass = "TABLET";
+        } else if (/mobile|iphone|ipod|android|blackberry|opera mini|iemobile|webos/i.test(ua) || width < 768) {
+            deviceClass = "MOBILE";
+        }
         return {
             user_agent: navigator.userAgent,
             screen_width: window.screen.width,
             screen_height: window.screen.height,
             color_depth: window.screen.colorDepth || 24,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            language: navigator.language || 'en-US'
+            language: navigator.language || 'en-US',
+            device_class: deviceClass
         };
     }
 
@@ -114,6 +123,57 @@ const BehaviorShield = (function() {
                 event: 'scroll',
                 scroll_delta: Math.abs(e.deltaY)
             });
+        }, { passive: true });
+
+        // Track touch events for mobile/tablet devices (Stream 5)
+        let lastTouchTime = 0;
+        const touchMoveSampleRateMs = 50;
+        let activeTouches = {};
+
+        window.addEventListener('touchstart', function(e) {
+            const now = Date.now();
+            if (e.touches && e.touches.length > 0) {
+                const touch = e.touches[0];
+                mouseSamplesBuffer.push({
+                    timestamp: now,
+                    x: Math.round(touch.clientX),
+                    y: Math.round(touch.clientY),
+                    event: 'click_down'
+                });
+                activeTouches['primary'] = now;
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchmove', function(e) {
+            const now = Date.now();
+            if (now - lastTouchTime >= touchMoveSampleRateMs) {
+                if (e.touches && e.touches.length > 0) {
+                    const touch = e.touches[0];
+                    mouseSamplesBuffer.push({
+                        timestamp: now,
+                        x: Math.round(touch.clientX),
+                        y: Math.round(touch.clientY),
+                        event: 'move'
+                    });
+                    lastTouchTime = now;
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', function(e) {
+            const now = Date.now();
+            mouseSamplesBuffer.push({
+                timestamp: now,
+                x: e.changedTouches && e.changedTouches.length > 0 ? Math.round(e.changedTouches[0].clientX) : 0,
+                y: e.changedTouches && e.changedTouches.length > 0 ? Math.round(e.changedTouches[0].clientY) : 0,
+                event: 'click_up'
+            });
+            const touchStart = activeTouches['primary'];
+            if (touchStart) {
+                const dwell = now - touchStart;
+                clickDwells.push(dwell);
+                delete activeTouches['primary'];
+            }
         }, { passive: true });
     }
 

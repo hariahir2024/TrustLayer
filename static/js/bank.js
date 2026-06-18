@@ -9,10 +9,19 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Register Service Worker for PWA (Stream 5)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js')
+            .then(reg => console.log('[PWA] Service Worker registered!', reg))
+            .catch(err => console.error('[PWA] Service Worker registration failed:', err));
+    }
+
     // Auth UI View elements
     const authContainer = document.getElementById('auth-container');
     const views = {
         username: document.getElementById('username-view'),
+        register: document.getElementById('register-view'),
+        created: document.getElementById('created-view'),
         enroll: document.getElementById('enroll-view'),
         login: document.getElementById('login-view'),
         portal: document.getElementById('portal-view')
@@ -22,13 +31,27 @@ document.addEventListener('DOMContentLoaded', function() {
     const tabs = {
         dashboard: document.getElementById('page-dashboard'),
         transfer: document.getElementById('page-transfer'),
+        bills: document.getElementById('page-bills'),
+        upi: document.getElementById('page-upi'),
         payees: document.getElementById('page-payees'),
-        statements: document.getElementById('page-statements')
+        statements: document.getElementById('page-statements'),
+        fd: document.getElementById('page-fd'),
+        profile: document.getElementById('page-profile'),
+        support: document.getElementById('page-support')
     };
 
     // Inputs
     const inputs = {
         username: document.getElementById('start-username'),
+        startPass: document.getElementById('start-password'),
+        regUser: document.getElementById('reg-username'),
+        regPass: document.getElementById('reg-password'),
+        regFirst: document.getElementById('reg-first-name'),
+        regLast: document.getElementById('reg-last-name'),
+        regEmail: document.getElementById('reg-email'),
+        regMobile: document.getElementById('reg-mobile'),
+        regCity: document.getElementById('reg-city'),
+        regDob: document.getElementById('reg-dob'),
         enroll: document.getElementById('enroll-input'),
         loginPass: document.getElementById('login-password'),
         challenge: document.getElementById('challenge-input'),
@@ -48,18 +71,48 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Statements
         stmtSearch: document.getElementById('stmt-search'),
-        stmtFilter: document.getElementById('stmt-filter')
+        stmtFilter: document.getElementById('stmt-filter'),
+        
+        // Bills
+        billCategory: document.getElementById('bill-category'),
+        billConsumer: document.getElementById('bill-consumer-id'),
+        billAmount: document.getElementById('bill-amount'),
+        
+        // UPI
+        upiVpa: document.getElementById('upi-vpa'),
+        upiAmount: document.getElementById('upi-amount'),
+        
+        // FD
+        fdAmount: document.getElementById('fd-amount'),
+        fdTenure: document.getElementById('fd-tenure'),
+        
+        // Profile
+        profOldPass: document.getElementById('prof-old-pass'),
+        profNewPass: document.getElementById('prof-new-pass'),
+        
+        // Support
+        supportCategory: document.getElementById('support-category'),
+        supportMessage: document.getElementById('support-message')
     };
 
     // Buttons
     const buttons = {
         nextStep: document.getElementById('btn-next-step'),
+        showRegister: document.getElementById('link-show-register'),
+        regBack: document.getElementById('reg-back-login'),
+        regSubmit: document.getElementById('reg-submit-btn'),
+        createdProceed: document.getElementById('created-proceed-btn'),
         enrollCancel: document.getElementById('enroll-cancel'),
         enrollComplete: document.getElementById('enroll-complete-btn'),
         loginBack: document.getElementById('login-back'),
         loginSubmit: document.getElementById('login-submit'),
         logout: document.getElementById('logout-btn'),
         txSubmit: document.getElementById('tx-submit'),
+        billSubmit: document.getElementById('bill-submit-btn'),
+        upiSubmit: document.getElementById('upi-submit-btn'),
+        fdSubmit: document.getElementById('fd-submit-btn'),
+        profPassBtn: document.getElementById('prof-pass-btn'),
+        supportSubmit: document.getElementById('support-submit-btn'),
         challengeSubmit: document.getElementById('challenge-submit-btn'),
         otpSubmit: document.getElementById('otp-submit-btn'),
         otpCancel: document.getElementById('otp-cancel-btn'),
@@ -71,6 +124,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Displays
     const displays = {
+        createdAccount: document.getElementById('created-account-number'),
+        createdPassphrase: document.getElementById('created-passphrase'),
         enrollProgressText: document.getElementById('enroll-progress-text'),
         enrollProgressBar: document.getElementById('enroll-progress-bar'),
         liveRiskScore: document.getElementById('live-risk-score'),
@@ -93,6 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // State
     let currentUsername = "";
+    let userPassphrase = "SecureAuth@India1";
     let sessionId = null;
     let enrollmentSamplesCollected = 0;
     let isMouseCalibrated = false;
@@ -154,6 +210,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById(`tab-nav-${key}`).classList.remove('active');
             }
         });
+
+        if (tabName === 'profile') {
+            loadUserProfile();
+            loadUserAuditLog();
+        } else if (tabName === 'support') {
+            loadSupportTickets();
+        } else if (tabName === 'upi') {
+            document.getElementById('upi-my-vpa').textContent = `${currentUsername}@bsb`;
+        } else if (tabName === 'fd') {
+            updateFdCalculation();
+        }
     };
 
     // Register click events to nav sidebar items
@@ -164,42 +231,45 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     // LOCAL STORAGE DATABASE MANAGEMENT
     // ==========================================
-    function loadUserDatabase() {
+    async function loadUserDatabase() {
         const prefix = `vb_${currentUsername}_`;
         
-        // Load Balance
-        const savedBalance = localStorage.getItem(`${prefix}balance`);
-        userSavingsBalance = savedBalance ? parseFloat(savedBalance) : 423891.50;
-        updateBalanceDisplays();
+        // Load Profile & Balance from server
+        try {
+            const res = await fetch(`/api/profile/${currentUsername}`);
+            if (res.ok) {
+                const user = await res.json();
+                userSavingsBalance = user.balance;
+                updateBalanceDisplays();
+            } else {
+                const savedBalance = localStorage.getItem(`${prefix}balance`);
+                userSavingsBalance = savedBalance ? parseFloat(savedBalance) : 423891.50;
+                updateBalanceDisplays();
+            }
+        } catch (e) {
+            console.error("Error loading balance from server:", e);
+            const savedBalance = localStorage.getItem(`${prefix}balance`);
+            userSavingsBalance = savedBalance ? parseFloat(savedBalance) : 423891.50;
+            updateBalanceDisplays();
+        }
 
-        // Load Payees
-        const savedPayees = localStorage.getItem(`${prefix}payees`);
-        if (savedPayees) {
-            userPayees = JSON.parse(savedPayees);
-        } else {
-            // Default initial payees
-            userPayees = [
-                { name: "Ramesh Kumar", account: "5010023912903", ifsc: "SBIN0001802", limit: 100000 },
-                { name: "Asha Sharma", account: "1009023841029", ifsc: "HDFC0000104", limit: 50000 }
-            ];
-            savePayees();
+        // Load Payees from server
+        try {
+            const res = await fetch(`/api/payees/${currentUsername}`);
+            if (res.ok) {
+                const data = await res.json();
+                userPayees = data.payees || [];
+            } else {
+                userPayees = [];
+            }
+        } catch (e) {
+            console.error("Error loading payees from server:", e);
+            userPayees = [];
         }
         renderPayees();
 
-        // Load Transactions
-        const savedTx = localStorage.getItem(`${prefix}transactions`);
-        if (savedTx) {
-            userTransactions = JSON.parse(savedTx);
-        } else {
-            // Default transactions
-            userTransactions = [
-                { date: "10 Jun", ref: "TXN098412908", desc: "Electricity Bill Payment", type: "DEBIT", debit: 4200.00, credit: 0, status: "Paid" },
-                { date: "08 Jun", ref: "TXN092489104", desc: "Salary Credited", type: "CREDIT", debit: 0, credit: 95000.00, status: "Success" },
-                { date: "05 Jun", ref: "TXN084129841", desc: "Transfer to Asha Sharma", type: "DEBIT", debit: 12500.00, credit: 0, status: "Success" }
-            ];
-            saveTransactions();
-        }
-        renderTransactions();
+        // Load Transactions from server
+        await fetchTransactionsFromServer();
     }
 
     function savePayees() {
@@ -344,8 +414,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     buttons.nextStep.addEventListener('click', async function() {
         const username = inputs.username.value.trim();
-        if (!username) {
-            alert("Please enter a username.");
+        const password = inputs.startPass.value;
+        if (!username || !password) {
+            alert("Please enter both username and password.");
             return;
         }
 
@@ -357,30 +428,115 @@ document.addEventListener('DOMContentLoaded', function() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     username: currentUsername,
+                    password: password,
                     key_events: [],
                     device_info: BehaviorShield.getDeviceFingerprint()
                 })
             });
 
             if (!response.ok) {
-                alert("Server error checking user status.");
+                const errData = await response.json().catch(() => ({}));
+                alert(errData.detail || "Invalid username or password.");
                 return;
             }
 
             const data = await response.json();
             BehaviorShield.destroy();
 
+            if (data.passphrase) {
+                userPassphrase = data.passphrase;
+            }
+
             if (data.enrolled) {
                 document.getElementById('login-username-readonly').value = currentUsername;
                 displays.loginMessage.textContent = "Enter your NetBanking passphrase.";
                 showView('login');
             } else {
+                document.getElementById('enroll-passphrase-display').textContent = userPassphrase;
                 showView('enroll');
                 resetEnrollmentProgress();
             }
         } catch (err) {
-            console.error("Error checking user:", err);
+            console.error("Error logging in:", err);
             alert("Connection error. Is app.py running?");
+        }
+    });
+
+    // Registration UI Navigation
+    buttons.showRegister.addEventListener('click', function(e) {
+        e.preventDefault();
+        showView('register');
+    });
+
+    buttons.regBack.addEventListener('click', function() {
+        showView('username');
+    });
+
+    buttons.createdProceed.addEventListener('click', function() {
+        showView('username');
+        inputs.username.value = currentUsername;
+        inputs.startPass.value = '';
+        inputs.startPass.focus();
+    });
+
+    // Registration Submit
+    buttons.regSubmit.addEventListener('click', async function() {
+        const username = inputs.regUser.value.trim();
+        const password = inputs.regPass.value;
+        const firstName = inputs.regFirst.value.trim();
+        const lastName = inputs.regLast.value.trim();
+        const email = inputs.regEmail.value.trim();
+        const mobile = inputs.regMobile.value.trim();
+        const city = inputs.regCity.value.trim();
+        const dob = inputs.regDob.value;
+
+        if (!username || !password || !firstName || !lastName || !email || !mobile || !city || !dob) {
+            alert("Please fill in all fields to register.");
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: username,
+                    password: password,
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: email,
+                    mobile: mobile,
+                    city: city,
+                    date_of_birth: dob
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({}));
+                alert(errData.detail || "Registration failed.");
+                return;
+            }
+
+            const data = await response.json();
+            currentUsername = data.username;
+
+            // Display account created card details
+            displays.createdAccount.textContent = data.account_number;
+            displays.createdPassphrase.textContent = data.passphrase;
+            showView('created');
+
+            // Clear registration inputs
+            inputs.regUser.value = "";
+            inputs.regPass.value = "";
+            inputs.regFirst.value = "";
+            inputs.regLast.value = "";
+            inputs.regEmail.value = "";
+            inputs.regMobile.value = "";
+            inputs.regCity.value = "";
+            inputs.regDob.value = "";
+        } catch (err) {
+            console.error("Error registering:", err);
+            alert("Connection error during registration.");
         }
     });
 
@@ -422,8 +578,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.key === 'Enter') {
             e.preventDefault();
             const text = inputs.enroll.value.trim();
-            if (text !== "SecureAuth@India1") {
-                alert("Passphrase does not match exactly! Please type: SecureAuth@India1");
+            const targetPass = document.getElementById('enroll-passphrase-display').textContent.trim();
+            if (text !== targetPass) {
+                alert(`Passphrase does not match exactly! Please type: ${targetPass}`);
                 inputs.enroll.value = "";
                 BehaviorShield.extractKeyEvents(); 
                 return;
@@ -438,7 +595,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify({
                         username: currentUsername,
                         key_events: keyEvents,
-                        field_focus_ts: currentFocusFieldTs
+                        field_focus_ts: currentFocusFieldTs,
+                        device_class: BehaviorShield.getDeviceFingerprint().device_class
                     })
                 });
 
@@ -596,7 +754,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        if (pass !== "SecureAuth@India1") {
+        if (pass !== userPassphrase) {
             alert("Invalid credentials. Enter the enrolled passphrase.");
             inputs.loginPass.value = "";
             BehaviorShield.extractKeyEvents(); 
@@ -796,7 +954,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function submitChallenge() {
         const text = inputs.challenge.value.trim();
-        if (text !== "SecureAuth@India1") {
+        if (text !== userPassphrase) {
             displays.challengeError.textContent = "Passphrase does not match exactly!";
             displays.challengeError.classList.remove('hidden');
             inputs.challenge.value = "";
@@ -984,6 +1142,463 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ==========================================
+    // UTILITY BILL PAYMENTS HANDLER
+    // ==========================================
+    buttons.billSubmit.addEventListener('click', async function() {
+        const category = inputs.billCategory.value;
+        const consumer = inputs.billConsumer.value.trim();
+        const amtStr = inputs.billAmount.value.trim();
+
+        if (!consumer || !amtStr) {
+            alert("Please fill all fields.");
+            return;
+        }
+
+        const amount = parseFloat(amtStr);
+        if (amount <= 0) {
+            alert("Invalid payment amount.");
+            return;
+        }
+
+        if (amount > userSavingsBalance) {
+            alert("Insufficient balance in savings account.");
+            return;
+        }
+
+        // Register action
+        await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, action_type: 'bill_payment' })
+        });
+
+        // Trigger telemetry submission
+        await BehaviorShield.forceSubmitScore();
+
+        // Check if session got frozen
+        const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
+        const sessionCheck = await sessionCheckRes.json();
+        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+            overlays.freeze.classList.remove('hidden');
+            return;
+        }
+
+        // Proceed to bill payment API
+        try {
+            const billerType = category.toLowerCase().replace(" recharge", "").replace(" prepaid / postpaid", "");
+            const response = await fetch('/api/bill-payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    biller_type: billerType,
+                    consumer_id: consumer,
+                    amount: amount,
+                    description: `${category} payment — ${consumer}`
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                userSavingsBalance = data.new_balance;
+                updateBalanceDisplays();
+                alert(`Utility payment of ₹${amount} for ${category} successfully processed.`);
+                inputs.billConsumer.value = "";
+                inputs.billAmount.value = "";
+                fetchTransactionsFromServer();
+            } else {
+                alert(data.detail || "Transaction failed.");
+            }
+        } catch (e) {
+            alert("Error processing utility payment.");
+        }
+    });
+
+    // ==========================================
+    // UPI HANDLER
+    // ==========================================
+    buttons.upiSubmit.addEventListener('click', async function() {
+        const vpa = inputs.upiVpa.value.trim();
+        const amtStr = inputs.upiAmount.value.trim();
+
+        if (!vpa || !amtStr) {
+            alert("Please enter recipient UPI ID and amount.");
+            return;
+        }
+
+        const amount = parseFloat(amtStr);
+        if (amount <= 0) {
+            alert("Invalid amount.");
+            return;
+        }
+
+        if (amount > userSavingsBalance) {
+            alert("Insufficient balance.");
+            return;
+        }
+
+        // Register action
+        await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, action_type: 'upi' })
+        });
+
+        // Trigger telemetry submission
+        await BehaviorShield.forceSubmitScore();
+
+        // Check if session got frozen
+        const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
+        const sessionCheck = await sessionCheckRes.json();
+        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+            overlays.freeze.classList.remove('hidden');
+            return;
+        }
+
+        // Proceed to UPI API
+        try {
+            const response = await fetch('/api/upi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    upi_id: vpa,
+                    amount: amount
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                userSavingsBalance = data.new_balance;
+                updateBalanceDisplays();
+                alert(`UPI transfer of ₹${amount} to ${vpa} successful!`);
+                inputs.upiVpa.value = "";
+                inputs.upiAmount.value = "";
+                fetchTransactionsFromServer();
+            } else {
+                alert(data.detail || "UPI transfer failed.");
+            }
+        } catch (e) {
+            alert("Error processing UPI transfer.");
+        }
+    });
+
+    // ==========================================
+    // FIXED DEPOSITS HANDLER
+    // ==========================================
+    window.updateFdCalculation = function() {
+        const amtStr = inputs.fdAmount.value.trim();
+        const tenureSelect = inputs.fdTenure;
+        const selectedOption = tenureSelect.options[tenureSelect.selectedIndex];
+        const rate = parseFloat(selectedOption.getAttribute('data-rate')) || 6.8;
+        
+        const amount = amtStr ? parseFloat(amtStr) : 10000;
+        const years = parseInt(tenureSelect.value) || 1;
+        
+        const interest = amount * (rate / 100) * years;
+        const maturity = amount + interest;
+        
+        document.getElementById('fd-calc-maturity').textContent = `₹ ${maturity.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        document.getElementById('fd-calc-interest').textContent = `₹ ${interest.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+    
+    inputs.fdAmount.addEventListener('input', updateFdCalculation);
+    inputs.fdTenure.addEventListener('change', updateFdCalculation);
+
+    buttons.fdSubmit.addEventListener('click', async function() {
+        const amtStr = inputs.fdAmount.value.trim();
+        const tenure = parseInt(inputs.fdTenure.value);
+
+        if (!amtStr) {
+            alert("Please enter deposit amount.");
+            return;
+        }
+
+        const amount = parseFloat(amtStr);
+        if (amount < 10000) {
+            alert("Minimum Fixed Deposit booking amount is ₹10,000.");
+            return;
+        }
+
+        if (amount > userSavingsBalance) {
+            alert("Insufficient balance in savings account.");
+            return;
+        }
+
+        // Register action
+        await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, action_type: 'fd_booking' })
+        });
+
+        // Trigger telemetry submission
+        await BehaviorShield.forceSubmitScore();
+
+        // Check if session got frozen
+        const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
+        const sessionCheck = await sessionCheckRes.json();
+        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+            overlays.freeze.classList.remove('hidden');
+            return;
+        }
+
+        // Proceed to FD API
+        try {
+            const response = await fetch('/api/fd', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    amount: amount,
+                    tenure: tenure
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                userSavingsBalance = data.new_balance;
+                updateBalanceDisplays();
+                alert(`Fixed Deposit of ₹${amount} for ${tenure} Year(s) booked successfully!\nInterest Earned: ₹${data.interest_earned.toFixed(2)}\nMaturity Amount: ₹${data.maturity_amount.toFixed(2)}`);
+                inputs.fdAmount.value = "";
+                fetchTransactionsFromServer();
+            } else {
+                alert(data.detail || "FD Booking failed.");
+            }
+        } catch (e) {
+            alert("Error booking Fixed Deposit.");
+        }
+    });
+
+    // ==========================================
+    // CHANGE PASSWORD HANDLER
+    // ==========================================
+    buttons.profPassBtn.addEventListener('click', async function() {
+        const oldPass = inputs.profOldPass.value;
+        const newPass = inputs.profNewPass.value;
+
+        if (!oldPass || !newPass) {
+            alert("Please enter both current and new passwords.");
+            return;
+        }
+
+        if (newPass.length < 8) {
+            alert("New password must be at least 8 characters.");
+            return;
+        }
+
+        // Register action
+        await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, action_type: 'change_password' })
+        });
+
+        // Trigger telemetry submission
+        await BehaviorShield.forceSubmitScore();
+
+        // Check if session got frozen
+        const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
+        const sessionCheck = await sessionCheckRes.json();
+        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+            overlays.freeze.classList.remove('hidden');
+            return;
+        }
+
+        // Proceed to Change Password API
+        try {
+            const response = await fetch('/api/profile/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    old_password: oldPass,
+                    new_password: newPass
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                alert("NetBanking login password successfully updated!");
+                inputs.profOldPass.value = "";
+                inputs.profNewPass.value = "";
+            } else {
+                alert(data.detail || "Failed to update password.");
+            }
+        } catch (e) {
+            alert("Error updating NetBanking password.");
+        }
+    });
+
+    // ==========================================
+    // SUPPORT TICKET SUBMISSION
+    // ==========================================
+    buttons.supportSubmit.addEventListener('click', async function() {
+        const category = inputs.supportCategory.value;
+        const message = inputs.supportMessage.value.trim();
+
+        if (!message) {
+            alert("Please enter ticket description details.");
+            return;
+        }
+
+        // Register action
+        await fetch('/api/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, action_type: 'submit_support' })
+        });
+
+        // Trigger telemetry submission
+        await BehaviorShield.forceSubmitScore();
+
+        // Check if session got frozen
+        const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
+        const sessionCheck = await sessionCheckRes.json();
+        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+            overlays.freeze.classList.remove('hidden');
+            return;
+        }
+
+        // Proceed to Support ticket API
+        try {
+            const response = await fetch('/api/support/tickets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: sessionId,
+                    category: category,
+                    description: message
+                })
+            });
+
+            const data = await response.json();
+            if (response.ok && data.success) {
+                alert(`Support ticket ${data.ticket.ticket_id} logged successfully!`);
+                inputs.supportMessage.value = "";
+                loadSupportTickets();
+            } else {
+                alert(data.detail || "Failed to log ticket.");
+            }
+        } catch (e) {
+            alert("Error submitting support ticket.");
+        }
+    });
+
+    // ==========================================
+    // SERVER DATA LOADING FUNCTIONS
+    // ==========================================
+    async function fetchTransactionsFromServer() {
+        try {
+            const res = await fetch(`/api/transactions/${currentUsername}`);
+            if (res.ok) {
+                const data = await res.json();
+                userTransactions = data.map(tx => {
+                    const dateObj = new Date(tx.created_at * 1000);
+                    const dateStr = dateObj.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                    const isDebit = ["debit", "transfer", "bill", "upi", "deposit"].some(t => tx.txn_type.startsWith(t));
+                    return {
+                        date: dateStr,
+                        ref: `TXN${tx.id.toString().padStart(6, '0')}`,
+                        desc: tx.description,
+                        type: isDebit ? "DEBIT" : "CREDIT",
+                        debit: isDebit ? tx.amount : 0,
+                        credit: isDebit ? 0 : tx.amount,
+                        status: tx.status === "success" ? "Success" : "Pending"
+                    };
+                });
+                renderTransactions();
+            }
+        } catch (e) {
+            console.error("Error loading transactions from server:", e);
+        }
+    }
+
+    window.loadUserProfile = async function() {
+        try {
+            const res = await fetch(`/api/profile/${currentUsername}`);
+            if (res.ok) {
+                const user = await res.json();
+                document.getElementById('prof-first-name').textContent = user.first_name || '-';
+                document.getElementById('prof-last-name').textContent = user.last_name || '-';
+                document.getElementById('prof-email').textContent = user.email || '-';
+                document.getElementById('prof-mobile').textContent = user.mobile || '-';
+                document.getElementById('prof-city').textContent = user.city || '-';
+            }
+        } catch (e) {
+            console.error("Error loading profile:", e);
+        }
+    };
+
+    window.loadUserAuditLog = async function() {
+        try {
+            const res = await fetch(`/api/user/${currentUsername}/security-log?limit=5`);
+            if (res.ok) {
+                const data = await res.json();
+                const tbody = document.getElementById('profile-audit-table-body');
+                tbody.innerHTML = '';
+                if (data.events && data.events.length > 0) {
+                    data.events.forEach(evt => {
+                        const dateStr = new Date(evt.timestamp * 1000).toLocaleString();
+                        const score = evt.risk_score !== null ? evt.risk_score.toFixed(1) : '-';
+                        const row = document.createElement('tr');
+                        
+                        let badgeClass = 'badge-green';
+                        if (evt.status.includes('FAIL') || evt.status.includes('FROZEN') || evt.status.includes('BLOCKED')) {
+                            badgeClass = 'badge-red';
+                        } else if (evt.status.includes('AMBER') || evt.status.includes('CHALLENGE')) {
+                            badgeClass = 'badge-amber';
+                        }
+                        
+                        row.innerHTML = `
+                            <td>${dateStr}</td>
+                            <td class="text-mono">${evt.device_class || 'DESKTOP'}</td>
+                            <td class="text-mono">${evt.ip_address || '-'}</td>
+                            <td class="fw-600">${score}</td>
+                            <td><span class="badge ${badgeClass}">${evt.status}</span></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No security events found.</td></tr>';
+                }
+            }
+        } catch (e) {
+            console.error("Error loading security log:", e);
+        }
+    };
+
+    window.loadSupportTickets = async function() {
+        try {
+            const res = await fetch(`/api/support/tickets/${currentUsername}`);
+            if (res.ok) {
+                const data = await res.json();
+                const tbody = document.getElementById('support-tickets-table-body');
+                tbody.innerHTML = '';
+                if (data.tickets && data.tickets.length > 0) {
+                    data.tickets.forEach(tkt => {
+                        const dateStr = new Date(tkt.created_at * 1000).toLocaleString();
+                        const descSummary = tkt.description.length > 50 ? tkt.description.substring(0, 47) + '...' : tkt.description;
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td class="text-mono fw-600 text-brand">${tkt.ticket_id}</td>
+                            <td>${tkt.category}</td>
+                            <td title="${tkt.description}">${descSummary}</td>
+                            <td>${dateStr}</td>
+                            <td><span class="badge badge-blue">${tkt.status}</span></td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No logged tickets found.</td></tr>';
+                }
+            }
+        } catch (e) {
+            console.error("Error loading support tickets:", e);
+        }
+    };
+
+    // ==========================================
     // FLOATING DEVELOPER SIMULATOR PANEL
     // ==========================================
     const toggle = document.getElementById('demo-widget-toggle');
@@ -1020,7 +1635,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        const text = "SecureAuth@India1";
+        const text = userPassphrase;
         simulateTyping(targetInput, text, selectedPersona);
     });
 
