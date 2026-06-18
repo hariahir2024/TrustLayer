@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (s.status === 'terminated') statusDotClass = 'dot-gray';
 
         tr.innerHTML = `
-            <td class="text-mono text-sm">${s.session_id}</td>
+            <td class="text-mono text-sm">${s.session_id.substring(0, 8)}...</td>
             <td><strong>${s.username}</strong></td>
             <td>
                 <span class="flex items-center gap-2">
@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const formatted = {
-            session_id: s.session_id.substring(0, 8) + '...',
+            session_id: s.session_id,
             username: s.username,
             status: 'active',
             duration_sec: 0,
@@ -289,12 +289,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function updateSessionInTable(s) {
-        const rowId = `row-${s.session_id.substring(0, 8)}...`;
+        const rowId = `row-${s.session_id}`;
         const existingRow = document.getElementById(rowId);
         
         if (existingRow) {
             const formatted = {
-                session_id: s.session_id.substring(0, 8) + '...',
+                session_id: s.session_id,
                 username: s.username,
                 status: s.band.startsWith('RED') ? 'frozen' : 'active',
                 duration_sec: 15, // placeholder
@@ -342,10 +342,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (sessionData) {
                 elements.ddUsername.textContent = sessionData.username;
-                elements.ddSessionId.textContent = `Session UUID: ${selectedSessionId}`;
+                elements.ddSessionId.textContent = `Session ID: ${selectedSessionId}`;
                 elements.ddRiskScore.textContent = sessionData.risk_score.toFixed(1);
                 elements.ddRiskBadge.textContent = sessionData.band;
                 applyBadgeColor(elements.ddRiskBadge, sessionData.band);
+
+                // Populate Diagnostics
+                document.getElementById('dd-ip-address').textContent = sessionData.ip_address || '127.0.0.1';
+                document.getElementById('dd-interval').textContent = `${sessionData.scoring_interval || 30}s`;
+                document.getElementById('dd-user-agent').textContent = sessionData.user_agent || 'Unknown Client';
 
                 // Update charts and breakdowns
                 updateShapBreakdown(sessionData.last_breakdown);
@@ -362,6 +367,11 @@ document.addEventListener('DOMContentLoaded', function() {
         elements.ddRiskScore.textContent = evt.score.toFixed(1);
         elements.ddRiskBadge.textContent = evt.band;
         applyBadgeColor(elements.ddRiskBadge, evt.band);
+
+        // Update metadata live
+        if (evt.ip_address) document.getElementById('dd-ip-address').textContent = evt.ip_address;
+        if (evt.scoring_interval) document.getElementById('dd-interval').textContent = `${evt.scoring_interval}s`;
+        if (evt.user_agent) document.getElementById('dd-user-agent').textContent = evt.user_agent;
 
         // Find matching breakdown object
         const fakeBreakdownObj = {
@@ -421,6 +431,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const ctx = document.getElementById('keystroke-chart').getContext('2d');
+        
+        // Create gradients
+        const gradientObs = ctx.createLinearGradient(0, 0, 0, 150);
+        gradientObs.addColorStop(0, 'rgba(6, 182, 212, 0.85)'); // Cyan
+        gradientObs.addColorStop(1, 'rgba(6, 182, 212, 0.1)');
+
+        const gradientBase = ctx.createLinearGradient(0, 0, 0, 150);
+        gradientBase.addColorStop(0, 'rgba(99, 102, 241, 0.45)'); // Indigo
+        gradientBase.addColorStop(1, 'rgba(99, 102, 241, 0.05)');
+
         keystrokeChart = new Chart(ctx, {
             type: 'bar',
             data: {
@@ -429,16 +449,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     {
                         label: 'Observed Time (ms)',
                         data: observedData,
-                        backgroundColor: '#3b82f6',
-                        borderColor: '#2563eb',
-                        borderWidth: 1
+                        backgroundColor: gradientObs,
+                        borderColor: 'rgba(6, 182, 212, 0.9)',
+                        borderWidth: 1.5,
+                        borderRadius: 4
                     },
                     {
                         label: 'Enrolled Baseline (ms)',
                         data: baselineData,
-                        backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                        borderColor: 'rgba(255, 255, 255, 0.3)',
-                        borderWidth: 1
+                        backgroundColor: gradientBase,
+                        borderColor: 'rgba(99, 102, 241, 0.5)',
+                        borderWidth: 1.5,
+                        borderRadius: 4
                     }
                 ]
             },
@@ -447,17 +469,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        labels: { color: '#94a3b8', font: { size: 10 } }
+                        labels: { 
+                            color: '#e2e8f0', 
+                            font: { family: 'Outfit', size: 10, weight: 600 } 
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#94a3b8', font: { size: 9 } },
-                        grid: { color: 'rgba(255,255,255,0.03)' }
+                        ticks: { color: '#94a3b8', font: { family: 'Outfit', size: 9 } },
+                        grid: { color: 'rgba(30, 58, 138, 0.15)' }
                     },
                     y: {
-                        ticks: { color: '#94a3b8', font: { size: 9 } },
-                        grid: { color: 'rgba(255,255,255,0.03)' }
+                        ticks: { color: '#94a3b8', font: { family: 'Outfit', size: 9 } },
+                        grid: { color: 'rgba(30, 58, 138, 0.15)' }
                     }
                 }
             }
@@ -480,16 +505,44 @@ document.addEventListener('DOMContentLoaded', function() {
             elements.mouseVariance.textContent = scroll ? scroll.observed.toFixed(1) : '-';
         }
 
+        // Draw tactical radar grid pattern background
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.06)';
+        ctx.lineWidth = 1;
+        
+        // Draw vertical/horizontal grid lines
+        for (let i = 25; i < canvas.width; i += 25) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
+        }
+        for (let i = 25; i < canvas.height; i += 25) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
+        }
+
+        // Draw central crosshairs and radar circles
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        ctx.strokeStyle = 'rgba(6, 182, 212, 0.12)';
+        ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy); ctx.stroke();
+        
+        ctx.beginPath(); ctx.arc(cx, cy, 30, 0, 2 * Math.PI); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, 60, 0, 2 * Math.PI); ctx.stroke();
+
+        // Canvas HUD Label Overlay
+        ctx.fillStyle = 'rgba(6, 182, 212, 0.45)';
+        ctx.font = '8px var(--font-mono)';
+        ctx.fillText('TARGET SECTOR: BS-SEC-9', 8, 12);
+        ctx.fillText('RESOLVER: ACTIVE', 8, 22);
+
         const samples = breakdownObj ? breakdownObj.mouse_samples : null;
         if (!samples || samples.length === 0) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-            ctx.font = '11px sans-serif';
-            ctx.fillText("No mouse coordinates recorded in this cycle.", 20, 70);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+            ctx.font = '11px var(--font-sans)';
+            ctx.fillText("No mouse coordinates recorded in this cycle.", 20, 75);
             return;
         }
 
         // Project coordinate boundaries to fit canvas size
-        const padding = 15;
+        const padding = 20;
         const xs = samples.map(s => s.x);
         const ys = samples.map(s => s.y);
         const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -498,17 +551,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const rangeX = (maxX - minX) || 1;
         const rangeY = (maxY - minY) || 1;
 
-        // Draw grid
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
-        ctx.lineWidth = 1;
-        for (let i = 20; i < canvas.width; i += 20) {
-            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height); ctx.stroke();
-        }
-        for (let i = 20; i < canvas.height; i += 20) {
-            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(canvas.width, i); ctx.stroke();
-        }
-
-        // Draw lines
+        // Draw coordinates line trail
         ctx.beginPath();
         samples.forEach((s, idx) => {
             const canvasX = padding + ((s.x - minX) / rangeX) * (canvas.width - 2 * padding);
@@ -519,27 +562,39 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Set path color based on straightness/bot markers
-        let pathColor = '#10b981'; // Green
+        let pathColor = '#10b981'; // Green (human)
         const isBot = breakdownObj.is_bot || (samples.length > 5 && (maxX - minX < 2 || maxY - minY < 2)); // straight line
-        if (isBot) pathColor = '#ef4444'; // Red (bot)
+        if (isBot) pathColor = '#f43f5e'; // Rose (bot)
         
         ctx.strokeStyle = pathColor;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 2.5;
+        // Neon Glow effect
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = pathColor;
         ctx.stroke();
+        
+        // Reset shadow for other drawings
+        ctx.shadowBlur = 0;
 
-        // Draw nodes for start/end
+        // Draw start/end target elements
         if (samples.length > 0) {
             // Start node
             const startX = padding + ((samples[0].x - minX) / rangeX) * (canvas.width - 2 * padding);
             const startY = padding + ((samples[0].y - minY) / rangeY) * (canvas.height - 2 * padding);
             ctx.fillStyle = '#3b82f6';
             ctx.beginPath(); ctx.arc(startX, startY, 4, 0, 2 * Math.PI); ctx.fill();
+            // Start Ring
+            ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+            ctx.beginPath(); ctx.arc(startX, startY, 8, 0, 2 * Math.PI); ctx.stroke();
 
             // End node
             const endX = padding + ((samples[samples.length-1].x - minX) / rangeX) * (canvas.width - 2 * padding);
             const endY = padding + ((samples[samples.length-1].y - minY) / rangeY) * (canvas.height - 2 * padding);
             ctx.fillStyle = '#f59e0b';
             ctx.beginPath(); ctx.arc(endX, endY, 4, 0, 2 * Math.PI); ctx.fill();
+            // End Ring
+            ctx.strokeStyle = 'rgba(245, 158, 11, 0.5)';
+            ctx.beginPath(); ctx.arc(endX, endY, 8, 0, 2 * Math.PI); ctx.stroke();
         }
     }
 
@@ -550,7 +605,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Filter logs for this session (either full session_id or truncated comparison)
             const sessionLogs = allLogs.filter(l => 
-                l.session_id === sid || sid.startsWith(l.session_id.substring(0, 8))
+                l.session_id && (l.session_id === sid || sid.startsWith(l.session_id.substring(0, 8)))
             );
 
             elements.ddSessionLogs.innerHTML = '';

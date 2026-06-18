@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BehaviorShield — Security Operations Center</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
   <style>
     /* Dashboard specific layout adjustments */
     .dashboard-grid {
@@ -37,10 +37,11 @@
       justify-content: center;
       height: 250px;
       text-align: center;
-      border: 1px dashed var(--border);
+      border: 1px dashed rgba(6, 182, 212, 0.25);
       border-radius: var(--radius-lg);
-      padding: 2rem;
-      background: rgba(255,255,255,0.01);
+      padding: 2.5rem;
+      background: rgba(6, 182, 212, 0.02);
+      box-shadow: inset 0 0 20px rgba(6, 182, 212, 0.03);
     }
   </style>
 </head>
@@ -57,7 +58,7 @@
     </div>
 
     <!-- Connection Indicator -->
-    <div class="ws-indicator px-2 mb-4Disconnected" id="ws-indicator">
+    <div class="ws-indicator px-2 mb-4 Disconnected" id="ws-indicator" style="margin-bottom: 1rem; margin-top: 0.5rem;">
       <div class="ws-dot"></div>
       <span id="ws-status">Connecting to engine...</span>
     </div>
@@ -141,28 +142,57 @@
         <div class="dashboard-grid">
           
           <!-- Selected Session Overview -->
-          <div class="card col-12" style="border-left: 4px solid var(--brand);">
-            <div class="flex justify-between items-center">
-              <div>
-                <h2 id="dd-username">User Profile</h2>
-                <p class="text-mono text-xs text-muted" id="dd-session-id">Session: ----------------</p>
-              </div>
-              <div class="flex gap-4 items-center">
-                <div class="score-display">
-                  <span class="text-xs text-muted uppercase fw-700">Risk Score</span>
-                  <div class="flex items-end gap-1">
-                    <span id="dd-risk-score" class="score-number green">0.0</span>
-                    <span class="text-muted text-mono text-xs">/ 100</span>
+          <div class="card col-12" style="border-left: 4px solid var(--brand); padding: 1.5rem;">
+            <div class="grid-2" style="gap: 1.5rem; grid-template-columns: 1.2fr 1.8fr;">
+              
+              <!-- Left: Analyst Action Panel -->
+              <div class="flex flex-col justify-between" style="border-right: 1px dashed var(--border); padding-right: 1.5rem;">
+                <div>
+                  <div class="flex justify-between items-start mb-2">
+                    <div>
+                      <h2 id="dd-username" style="font-size: 1.5rem; font-weight: 800; color: #fff;">User Profile</h2>
+                      <p class="text-mono text-xs text-muted mt-1" id="dd-session-id" style="font-size: 0.72rem; word-break: break-all;">Session: ----------------</p>
+                    </div>
+                    <span id="dd-risk-badge" class="badge badge-green" style="padding: 0.35rem 0.85rem; font-size: 0.75rem;">GREEN</span>
+                  </div>
+                  
+                  <div class="flex items-center gap-3 mt-2">
+                    <span class="text-xs text-muted uppercase fw-700" style="letter-spacing: 0.05em; font-size: 0.75rem;">Session Risk Index:</span>
+                    <div class="flex items-end gap-1">
+                      <span id="dd-risk-score" class="score-number green" style="font-size: 2.2rem; font-weight: 900;">0.0</span>
+                      <span class="text-muted text-mono text-xs" style="margin-bottom: 5px;">/ 100</span>
+                    </div>
                   </div>
                 </div>
-                <span id="dd-risk-badge" class="badge badge-green">GREEN</span>
+
+                <!-- Admin Action Overrides -->
+                <div class="flex gap-2 mt-4" style="border-top: 1px solid var(--border); padding-top: 1rem;">
+                  <button class="btn btn-danger btn-sm" id="btn-force-freeze" style="font-size: 0.8rem; font-weight: 700; padding: 0.5rem 1rem;">🚨 Force Freeze</button>
+                  <button class="btn btn-secondary btn-sm" id="btn-force-unfreeze" style="font-size: 0.8rem; font-weight: 700; padding: 0.5rem 1rem;">✓ Dismiss Alert</button>
+                </div>
               </div>
-            </div>
-            
-            <!-- Admin Overrides -->
-            <div class="flex gap-3 mt-4" style="border-top: 1px solid var(--border); padding-top: 1rem;">
-              <button class="btn btn-danger btn-sm" id="btn-force-freeze">🚨 Force Freeze Session</button>
-              <button class="btn btn-secondary btn-sm" id="btn-force-unfreeze">✓ Unfreeze / False Positive</button>
+
+              <!-- Right: Device Profile & Diagnostics -->
+              <div class="flex flex-col justify-between" style="padding-left: 0.5rem;">
+                <div>
+                  <h4 class="mb-3 text-xs uppercase text-brand fw-700" style="letter-spacing: 0.08em; margin-bottom: 0.75rem; color: var(--cyan);">Session Profile & Diagnostics</h4>
+                  <div class="grid-2" style="gap: 1rem; grid-template-columns: 1fr 1fr; font-size: 0.82rem;">
+                    <div>
+                      <span class="text-muted text-xs uppercase" style="display:block; font-size:0.68rem; font-weight:700; letter-spacing:0.04em; margin-bottom: 0.2rem;">Client IP Address</span>
+                      <strong id="dd-ip-address" class="text-mono" style="color: #f1f5f9; font-size: 0.9rem;">--</strong>
+                    </div>
+                    <div>
+                      <span class="text-muted text-xs uppercase" style="display:block; font-size:0.68rem; font-weight:700; letter-spacing:0.04em; margin-bottom: 0.2rem;">Telemetry Refresh Rate</span>
+                      <strong id="dd-interval" style="color: #f1f5f9; font-size: 0.9rem;">--</strong>
+                    </div>
+                    <div style="grid-column: span 2;">
+                      <span class="text-muted text-xs uppercase" style="display:block; font-size:0.68rem; font-weight:700; letter-spacing:0.04em; margin-bottom: 0.2rem;">Browser User Agent</span>
+                      <strong id="dd-user-agent" class="text-mono" style="color: #94a3b8; font-size: 0.75rem; word-break: break-all; font-weight: 400; line-height: 1.4;">--</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
 

@@ -4,22 +4,23 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bharat Suraksha Bank — Premium Internet Banking</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
   <style>
     /* Premium layout overrides */
     .bank-logo {
       width: 36px;
       height: 36px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--green), var(--brand));
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--green), var(--cyan));
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
       color: #fff;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
     }
     .bank-header {
-      background: linear-gradient(180deg, #0b1329 0%, #060b18 100%);
+      background: linear-gradient(180deg, #070e1b 0%, #030712 100%);
       border-bottom: 1px solid var(--border);
       padding: 1rem 2rem;
     }
@@ -48,13 +49,14 @@
       position: fixed;
       bottom: 20px;
       right: 20px;
-      width: 300px;
-      background: rgba(13, 21, 38, 0.95);
-      border: 1px solid var(--border-bright);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      width: 310px;
+      background: rgba(8, 15, 30, 0.85);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.75);
       border-radius: var(--radius-lg);
       z-index: 999;
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       transition: transform 0.3s ease;
     }
     .demo-controller.collapsed {
@@ -201,20 +203,44 @@
       </div>
 
       <!-- Mouse tracing container -->
-      <div id="enroll-mouse-step" class="hidden">
-        <h5 class="mb-1">Mouse Path Alignment</h5>
-        <p class="text-muted text-xs">Trace the curve from START to END to verify cursor movement speed.</p>
-        <div class="enroll-path-canvas" id="mouse-path-area">
-          <span class="path-label">Trace curve left to right</span>
-          <svg width="100%" height="150" style="position: absolute; top:0; left:0;">
-            <path id="calibration-svg-path" d="M 40 75 Q 150 20 280 75 T 520 75" stroke="var(--border-bright)" stroke-width="3" fill="none" stroke-dasharray="6 4"/>
-            <circle cx="40" cy="75" r="10" fill="var(--cyan)"/>
-            <text x="35" y="100" fill="var(--cyan)" font-size="10" font-weight="700">START</text>
-            <circle cx="520" cy="75" r="10" fill="var(--brand)"/>
-            <text x="510" y="100" fill="var(--brand)" font-size="10" font-weight="700">END</text>
+      <div id="enroll-mouse-step" class="hidden mt-4">
+        <h5 class="mb-1">Biometric Mouse Calibration</h5>
+        <p class="text-muted text-xs">Trace the curved coordinate path from START to END to record cursor rhythm.</p>
+        <div class="enroll-path-canvas" id="mouse-path-area" style="overflow: hidden;">
+          <span class="path-label" id="path-instruction-label" style="font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--cyan); z-index: 10;">Trace curve left to right</span>
+          <svg viewBox="0 0 560 150" width="100%" height="150" style="position: absolute; top:0; left:0;">
+            <!-- Grid Lines -->
+            <line x1="0" y1="25" x2="560" y2="25" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="0" y1="50" x2="560" y2="50" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="0" y1="75" x2="560" y2="75" stroke="rgba(6, 182, 212, 0.09)" stroke-width="1"/>
+            <line x1="0" y1="100" x2="560" y2="100" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="0" y1="125" x2="560" y2="125" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            
+            <line x1="80" y1="0" x2="80" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="160" y1="0" x2="160" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="240" y1="0" x2="240" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="320" y1="0" x2="320" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="400" y1="0" x2="400" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+            <line x1="480" y1="0" x2="480" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
+
+            <!-- S-Curve Path -->
+            <path id="calibration-svg-path" d="M 40 75 Q 150 20 280 75 T 520 75" stroke="var(--border-bright)" stroke-width="2.5" fill="none" stroke-dasharray="6 4"/>
+            
+            <!-- START radar marker -->
+            <circle cx="40" cy="75" r="18" stroke="var(--cyan)" stroke-width="1" fill="none" stroke-dasharray="4 2" style="opacity: 0.5; transform-origin: 40px 75px; animation: spin 8s linear infinite;"/>
+            <circle id="calibration-ball" cx="40" cy="75" r="9" fill="var(--cyan)" style="box-shadow: 0 0 10px var(--cyan);"/>
+            <text x="22" y="106" fill="var(--cyan)" font-family="var(--font-mono)" font-size="9" font-weight="700" letter-spacing="0.05em">START</text>
+
+            <!-- END radar marker -->
+            <circle cx="520" cy="75" r="18" stroke="var(--brand)" stroke-width="1" fill="none" stroke-dasharray="4 2" style="opacity: 0.5; transform-origin: 520px 75px; animation: spin 8s linear infinite;"/>
+            <circle cx="520" cy="75" r="9" fill="var(--brand)"/>
+            <text x="506" y="106" fill="var(--brand)" font-family="var(--font-mono)" font-size="9" font-weight="700" letter-spacing="0.05em">END</text>
+            
+            <!-- Dynamic user drawing trace -->
+            <path id="dynamic-trace-path" d="" stroke="var(--green)" stroke-width="2.5" fill="none" style="opacity: 0.8; stroke-linecap: round;"/>
           </svg>
         </div>
-        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green);">✓ Mouse pattern verified</div>
+        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green); font-weight: 700;">✓ Mouse signature calibrated successfully</div>
       </div>
 
       <div class="flex gap-3 mt-4">
@@ -531,6 +557,10 @@
 
       <div class="live-sdk-status">
         <button id="btn-quick-fill" class="btn btn-secondary btn-sm btn-block">⚡ Quick-Fill Credentials</button>
+        <div id="sim-telemetry-hud" class="mt-2 p-2 text-xs text-mono" style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--cyan); display: none;">
+          <div class="flex justify-between"><span>Key Speed:</span><span><strong id="sim-key-speed">-</strong> CPM</span></div>
+          <div class="flex justify-between"><span>Avg Dwell:</span><span><strong id="sim-avg-dwell">-</strong> ms</span></div>
+        </div>
       </div>
       
       <div class="text-xs text-muted text-center text-mono mt-1">
@@ -593,8 +623,8 @@
   </div>
 
   <!-- Script tags -->
-  <script src="/static/js/sdk.js"></script>
-  <script src="/static/js/bank.js"></script>
+  <script src="/static/js/sdk.js?v=3"></script>
+  <script src="/static/js/bank.js?v=3"></script>
 
 </body>
 </html>

@@ -348,11 +348,15 @@ async def score(req: ScoreRequest):
         "mouse_score":      result.get("mouse_score"),
         "metadata_score":   result.get("metadata_score"),
         "top_contributors": result.get("top_contributors", []),
+        "all_contributors": result.get("all_contributors", []),
         "is_bot":           result.get("is_bot", False),
         "velocity_flag":    result.get("velocity_exceeded", False),
         "mouse_samples":    req.mouse_samples,
         "risk_history":     db.get_session_risk_history(req.session_id),
         "timestamp":        time.time(),
+        "ip_address":       session.get("ip_address"),
+        "user_agent":       session.get("user_agent"),
+        "scoring_interval": new_interval,
     })
 
     # Trigger freeze events on high-risk bands
@@ -604,7 +608,7 @@ async def dashboard_sessions():
     sessions = db.get_active_sessions()
     return [
         {
-            "session_id":   s["session_id"][:8] + "...",
+            "session_id":   s["session_id"],
             "username":     s["username"],
             "status":       s["status"],
             "risk_score":   s["current_risk"],
@@ -613,6 +617,9 @@ async def dashboard_sessions():
             "duration_sec": round(time.time() - s["created_at"], 0),
             "action_count": s["action_count"],
             "last_breakdown": s.get("last_breakdown"),
+            "ip_address":   s.get("ip_address"),
+            "user_agent":   s.get("user_agent"),
+            "scoring_interval": s.get("scoring_interval"),
         }
         for s in sessions
     ]
@@ -627,6 +634,7 @@ async def dashboard_logs(limit: int = 50):
             "event_id":   e["event_id"],
             "timestamp":  e["timestamp"],
             "event_type": e["event_type"],
+            "session_id": e.get("session_id"),
             "username":   e["username"],
             "risk_score": e["risk_score"],
             "risk_band":  e["risk_band"],
@@ -718,6 +726,16 @@ async def admin_soft_reset():
     _ip_tracker.clear()
     await manager.broadcast({"type": "soft_reset"})
     return {"reset": True, "message": "Sessions cleared. Enrolled profiles retained."}
+
+
+@app.get("/api/admin/baseline/{username}")
+async def admin_get_baseline(username: str):
+    """Get the user's keystroke baseline for verification."""
+    baseline = db.get_keystroke_baseline(username)
+    if not baseline:
+        raise HTTPException(404, "Baseline not found")
+    return baseline
+
 
 
 # =============================================================================

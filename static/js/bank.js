@@ -384,6 +384,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    inputs.username.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            buttons.nextStep.click();
+        }
+    });
+
     // ==========================================
     // ENROLLMENT PROGRESS & MOUSE CALIBRATION
     // ==========================================
@@ -397,6 +404,18 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('enroll-mouse-step').classList.add('hidden');
         displays.calibrationSuccess.classList.add('hidden');
         buttons.enrollComplete.disabled = true;
+
+        const label = document.getElementById('path-instruction-label');
+        if (label) label.textContent = "Trace curve left to right";
+        const ball = document.getElementById('calibration-ball');
+        if (ball) {
+            ball.setAttribute('cx', '40');
+            ball.setAttribute('cy', '75');
+            ball.setAttribute('fill', 'var(--cyan)');
+            ball.setAttribute('r', '10');
+        }
+        const tracePath = document.getElementById('dynamic-trace-path');
+        if (tracePath) tracePath.setAttribute('d', '');
     }
 
     inputs.enroll.addEventListener('keydown', async function(e) {
@@ -447,21 +466,107 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function initializeMouseCalibration() {
         const area = document.getElementById('mouse-path-area');
-        let inProgress = false;
+        const path = document.getElementById('calibration-svg-path');
+        const ball = document.getElementById('calibration-ball');
+        const label = document.getElementById('path-instruction-label');
+        const tracePath = document.getElementById('dynamic-trace-path');
+        
+        let isTracing = false;
+        let traceCoords = [];
+        const pathLength = path.getTotalLength();
 
-        area.addEventListener('mouseenter', function() { inProgress = true; });
-        area.addEventListener('mouseleave', function() { inProgress = false; });
+        // Ensure start state is visual
+        ball.setAttribute('cx', '40');
+        ball.setAttribute('cy', '75');
+        ball.setAttribute('fill', 'var(--cyan)');
+        ball.setAttribute('r', '10');
+        label.textContent = "Move cursor to START to begin tracing";
+        if (tracePath) tracePath.setAttribute('d', '');
 
         area.addEventListener('mousemove', function(e) {
-            if (!inProgress || isMouseCalibrated) return;
-            const rect = area.getBoundingClientRect();
-            const x = e.clientX - rect.left;
+            if (isMouseCalibrated) return;
             
-            if (x > 480) {
-                isMouseCalibrated = true;
-                displays.calibrationSuccess.classList.remove('hidden');
-                buttons.enrollComplete.disabled = false;
-                console.log("[BSB] Mouse calibration complete.");
+            const rect = area.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Map mouse coordinates to SVG viewBox (0 0 560 150)
+            const svgX = (mouseX / rect.width) * 560;
+            const svgY = (mouseY / rect.height) * 150;
+
+            if (!isTracing) {
+                // Check if user is near the START coordinates (40, 75)
+                const distToStart = Math.sqrt((svgX - 40) ** 2 + (svgY - 75) ** 2);
+                if (distToStart < 25) {
+                    isTracing = true;
+                    traceCoords = [{x: 40, y: 75}];
+                    if (tracePath) tracePath.setAttribute('d', 'M 40 75');
+                    ball.setAttribute('fill', 'var(--cyan)');
+                    ball.setAttribute('r', '12'); // grow to show active
+                    label.textContent = "Trace along the dashed line to END";
+                    console.log("[BSB] Tracing started");
+                }
+            } else {
+                // Project cursor onto the S-curve
+                // Path goes horizontally from X=40 to X=520
+                const clampedX = Math.max(40, Math.min(520, svgX));
+                const t = (clampedX - 40) / 480; // normalized [0, 1]
+                
+                // Get SVG path coordinate at length
+                const point = path.getPointAtLength(t * pathLength);
+                
+                // Move the ball along the path
+                ball.setAttribute('cx', point.x);
+                ball.setAttribute('cy', point.y);
+
+                // Add trail coordinates
+                traceCoords.push({x: svgX, y: svgY});
+                const dStr = traceCoords.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ');
+                if (tracePath) tracePath.setAttribute('d', dStr);
+
+                // Optional security check: if cursor goes way too far from the ball (e.g. > 70px), we reset
+                const distToBall = Math.sqrt((svgX - point.x) ** 2 + (svgY - point.y) ** 2);
+                if (distToBall > 70) {
+                    isTracing = false;
+                    traceCoords = [];
+                    if (tracePath) tracePath.setAttribute('d', '');
+                    ball.setAttribute('cx', '40');
+                    ball.setAttribute('cy', '75');
+                    ball.setAttribute('fill', 'var(--cyan)');
+                    ball.setAttribute('r', '10');
+                    label.textContent = "Trace deviated too much! Return to START";
+                    console.log("[BSB] Tracing reset due to deviation");
+                    return;
+                }
+
+                // Check for completion (clampedX is close to 520)
+                if (clampedX >= 515) {
+                    isTracing = false;
+                    isMouseCalibrated = true;
+                    ball.setAttribute('cx', '520');
+                    ball.setAttribute('cy', '75');
+                    ball.setAttribute('fill', 'var(--green)');
+                    ball.setAttribute('r', '10');
+                    label.textContent = "Mouse path verified!";
+                    
+                    displays.calibrationSuccess.classList.remove('hidden');
+                    buttons.enrollComplete.disabled = false;
+                    console.log("[BSB] Mouse calibration complete.");
+                }
+            }
+        });
+
+        area.addEventListener('mouseleave', function() {
+            if (!isMouseCalibrated) {
+                isTracing = false;
+                traceCoords = [];
+                if (tracePath) tracePath.setAttribute('d', '');
+                ball.setAttribute('cx', '40');
+                ball.setAttribute('cy', '75');
+                ball.setAttribute('fill', 'var(--cyan)');
+                ball.setAttribute('r', '10');
+                label.textContent = "Move cursor to START to begin tracing";
+                console.log("[BSB] Tracing reset on mouseleave");
             }
         });
     }
@@ -906,12 +1011,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const isChallengeActive = !overlays.challenge.classList.contains('hidden');
 
         let targetInput = null;
-        if (isEnrollActive) targetInput = inputs.enroll;
+        if (isEnrollActive && !inputs.enroll.disabled) targetInput = inputs.enroll;
         else if (isLoginActive) targetInput = inputs.loginPass;
         else if (isChallengeActive) targetInput = inputs.challenge;
 
         if (!targetInput) {
-            alert("Quick-Fill is only active on Enrollment, Login, or step-up inputs.");
+            alert("Quick-Fill is only active on active Enrollment, Login, or step-up inputs.");
             return;
         }
 
@@ -926,6 +1031,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
         BehaviorShield.extractKeyEvents();
 
+        const hud = document.getElementById('sim-telemetry-hud');
+        const speedEl = document.getElementById('sim-key-speed');
+        const dwellEl = document.getElementById('sim-avg-dwell');
+        if (hud) hud.style.display = 'block';
+
         let index = 0;
 
         function typeNextChar() {
@@ -933,6 +1043,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTimeout(() => {
                     const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter' });
                     inputElement.dispatchEvent(enterEvent);
+                    setTimeout(() => {
+                        if (hud) hud.style.display = 'none';
+                    }, 2000);
                 }, 200);
                 return;
             }
@@ -953,6 +1066,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 dwellTime = 1;
                 flightTime = 1;
             }
+
+            // Update live telemetry values
+            let displayDwell = Math.round(dwellTime);
+            let displayCpm = persona === 'bot' ? '> 20,000' : Math.round(60000 / (dwellTime + flightTime));
+            if (speedEl) speedEl.textContent = displayCpm;
+            if (dwellEl) dwellEl.textContent = displayDwell;
 
             setTimeout(function() {
                 const downEvent = new KeyboardEvent('keydown', { key: char, code: code });

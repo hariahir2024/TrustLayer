@@ -158,7 +158,7 @@ def load_generic_baselines() -> None:
     keystroke_pt_path = os.path.join(base_dir, MODEL_KEYSTROKE_PT)
     if os.path.exists(keystroke_pt_path):
         try:
-            checkpoint = torch.load(keystroke_pt_path, map_location=torch.device("cpu"))
+            checkpoint = torch.load(keystroke_pt_path, map_location=torch.device("cpu"), weights_only=True)
             cfg = checkpoint["model_config"]
             _generic_keystroke_lstm = LSTMAutoencoder(
                 input_size  = cfg["input_size"],
@@ -178,7 +178,7 @@ def load_generic_baselines() -> None:
     mouse_pt_path = os.path.join(base_dir, MODEL_MOUSE_PT)
     if os.path.exists(mouse_pt_path):
         try:
-            checkpoint = torch.load(mouse_pt_path, map_location=torch.device("cpu"))
+            checkpoint = torch.load(mouse_pt_path, map_location=torch.device("cpu"), weights_only=True)
             cfg = checkpoint["model_config"]
             _generic_mouse_lstm = LSTMAutoencoder(
                 input_size  = cfg["input_size"],
@@ -1056,7 +1056,7 @@ def score_keystrokes(username: str, features: dict, key_events: list = None) -> 
             seq_norm[:, 1] = (seq_norm[:, 1] - f_mean) / f_std
 
             # Predict MSE
-            x_tensor = torch.tensor(np.array([seq_norm]), dtype=torch.float32)
+            x_tensor = torch.from_numpy(np.array([seq_norm], dtype='float32'))
             with torch.no_grad():
                 recon, _ = lstm_model(x_tensor)
                 mse = float(((recon - x_tensor) ** 2).mean().item())
@@ -1072,6 +1072,7 @@ def score_keystrokes(username: str, features: dict, key_events: list = None) -> 
             stds  = baseline.get("stds", {})
 
             breakdown = []
+            z_score_based_risk = 0.0
             if means:
                 for feat_name in KEYSTROKE_FEATURES:
                     if feat_name not in features:
@@ -1085,6 +1086,7 @@ def score_keystrokes(username: str, features: dict, key_events: list = None) -> 
                     z = (features[feat_name] - mean) / safe_std
                     # Scale weight contribution according to the overall LSTM score
                     feat_risk = _z_to_risk(z) * weight
+                    z_score_based_risk += feat_risk
 
                     breakdown.append({
                         "feature":      feat_name,
@@ -1092,9 +1094,25 @@ def score_keystrokes(username: str, features: dict, key_events: list = None) -> 
                         "observed":     round(features[feat_name], 2),
                         "baseline_mean": round(mean, 2),
                         "z_score":      round(z, 2),
-                        "contribution": round(feat_risk * (keystroke_score / 50.0 if keystroke_score > 0 else 1.0), 2),
+                        "contribution": 0.0,  # Recalculated below
                         "unit":         FEATURES[feat_name]["unit"],
                     })
+
+                # Combine LSTM score and Z-score risk score (taking maximum)
+                keystroke_score = max(keystroke_score, min(z_score_based_risk, 100.0))
+
+                # Recalculate explainability contributions based on the final combined score
+                for item in breakdown:
+                    feat_name = item["feature"]
+                    mean   = means.get(feat_name, 0.0)
+                    std    = stds.get(feat_name,  FEATURES[feat_name]["min_std_floor"])
+                    floor  = FEATURES[feat_name]["min_std_floor"]
+                    weight = FEATURES[feat_name]["weight"]
+                    safe_std = max(std, floor)
+                    z = (features[feat_name] - mean) / safe_std
+                    feat_risk = _z_to_risk(z) * weight
+                    item["contribution"] = round(feat_risk * (keystroke_score / 50.0 if keystroke_score > 0 else 1.0), 2)
+
                 breakdown.sort(key=lambda x: x["contribution"], reverse=True)
 
             return round(keystroke_score, 1), breakdown
@@ -1185,7 +1203,7 @@ def score_mouse(username: str, features: dict, mouse_samples: list = None) -> tu
                 normalized_seqs.append(s_norm)
 
             # Predict MSE for all sequences
-            x_tensor = torch.tensor(np.array(normalized_seqs), dtype=torch.float32)
+            x_tensor = torch.from_numpy(np.array(normalized_seqs, dtype='float32'))
             with torch.no_grad():
                 recon, _ = lstm_model(x_tensor)
                 per_sample_mse = ((recon - x_tensor) ** 2).mean(dim=(1, 2))
@@ -1569,8 +1587,20 @@ def score_session(
             risk_score = BOT_SCORE_OVERRIDE,
             risk_band  = "RED_CRITICAL",
         )
-        db.update_session_risk(session_id, BOT_SCORE_OVERRIDE, "RED_CRITICAL",
-                               {"bot_reason": bot_reason})
+        breakdown = {
+            "final_score":      BOT_SCORE_OVERRIDE,
+            "band":             "RED_CRITICAL",
+            "is_bot":           True,
+            "bot_reason":       bot_reason,
+            "top_contributors": [{"feature": "bot_detection",
+                                   "label": bot_reason,
+                                   "contribution": 100.0}],
+            "all_contributors": [{"feature": "bot_detection",
+                                   "label": bot_reason,
+                                   "contribution": 100.0}],
+            "mouse_samples":    mouse_samples,
+        }
+        db.update_session_risk(session_id, BOT_SCORE_OVERRIDE, "RED_CRITICAL", breakdown)
         return {
             "final_score":      BOT_SCORE_OVERRIDE,
             "band":             "RED_CRITICAL",
@@ -1627,7 +1657,8 @@ def score_session(
     db.update_scoring_interval(session_id, new_interval)
 
     # ── Step 7: Persist to database ───────────────────────────────
-    db.update_session_risk(session_id, final_score, band, result)
+    db_result = {**result, "mouse_samples": mouse_samples}
+    db.update_session_risk(session_id, final_score, band, db_result)
     db.update_session_status(session_id, band.lower())
     db.log_event(
         event_type = "SCORE_UPDATE",

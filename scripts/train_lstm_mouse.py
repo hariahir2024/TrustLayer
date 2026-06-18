@@ -301,7 +301,7 @@ def train(
     criterion:  nn.Module,
     epochs:     int,
     grad_clip:  float,
-) -> tuple[list[float], list[float]]:
+) -> tuple[list[float], list[float], float]:
     train_losses, val_losses = [], []
     best_val_loss = float("inf")
     best_state    = None
@@ -386,7 +386,7 @@ def train(
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    return train_losses, val_losses
+    return train_losses, val_losses, t_elapsed
 
 
 # =============================================================================
@@ -572,7 +572,7 @@ def main():
     criterion = nn.MSELoss()
 
     # ── Step 4: Run Training ──────────────────────────────────────────────────
-    train_losses, val_losses = train(
+    train_losses, val_losses, t_elapsed = train(
         model      = model,
         loader     = train_loader,
         val_loader = val_loader,
@@ -581,8 +581,6 @@ def main():
         epochs     = LSTM_EPOCHS,
         grad_clip  = LSTM_GRAD_CLIP,
     )
-
-    t_elapsed = float(np.sum(train_losses)) # placeholder, actual elapsed is calculated in train()
 
     # ── Step 5: Compute anomaly threshold ─────────────────────────────────────
     print(f"\n  Computing anomaly threshold from validation set...")
@@ -595,7 +593,6 @@ def main():
     n_params = count_parameters(model)
     
     # ── Step 7: Save metadata ─────────────────────────────────────────────────
-    # We retrieve elapsed time from train console outputs or recalculate here
     save_metadata(
         path              = METADATA_OUT,
         train_losses      = train_losses,
@@ -605,7 +602,7 @@ def main():
         mean_err          = mean_err,
         std_err           = std_err,
         n_samples         = n_train,
-        training_time_sec = 0.0, # Will be set to the actual trained elapsed in metadata function
+        training_time_sec = t_elapsed,
     )
 
     # Fix the actual time saved in metadata
@@ -615,7 +612,6 @@ def main():
             meta = json.load(f)
         if "mouse_model" in meta:
             meta["mouse_model"]["architecture"]["n_params"] = n_params
-            # We don't have direct access to the elapsed variable, but we print it. Let's make it consistent.
         with open(METADATA_OUT, "w") as f:
             json.dump(meta, f, indent=2)
 
@@ -628,6 +624,7 @@ def main():
     print(f"  Final train loss : {train_losses[-1]:.6f}")
     print(f"  Best val loss    : {min(val_losses):.6f}")
     print(f"  Anomaly threshold: {threshold:.6f}  (95th pct of legit val errors)")
+    print(f"  Training time    : {t_elapsed:.1f}s")
     print(f"{'='*60}\n")
 
 
