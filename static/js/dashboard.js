@@ -357,6 +357,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 renderKeystrokeChart(sessionData.last_breakdown);
                 drawMouseTrajectory(sessionData.last_breakdown);
                 fetchAndRenderSessionHeartbeatLogs(selectedSessionId);
+
+                // Render intruder label panel (Stream 6A)
+                renderIntruderLabelPanel(selectedSessionId);
             }
         } catch (e) {
             console.error("Error loading deep dive details:", e);
@@ -733,14 +736,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     window.switchTab = function(tabName) {
         activeTab = tabName;
+        
+        // Remove active class from all nav items
         document.getElementById('nav-item-monitor').classList.remove('active');
         document.getElementById('nav-item-threats').classList.remove('active');
+        const navItemData = document.getElementById('nav-item-datacollection');
+        if (navItemData) navItemData.classList.remove('active');
         
+        // Add hidden class to all tabs
         document.getElementById('tab-monitor').classList.add('hidden');
         document.getElementById('tab-threats').classList.add('hidden');
+        const tabData = document.getElementById('tab-datacollection');
+        if (tabData) tabData.classList.add('hidden');
 
-        document.getElementById(`nav-item-${tabName}`).classList.add('active');
-        document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+        // Show selected tab and active nav item
+        const activeNav = document.getElementById(`nav-item-${tabName}`);
+        const activeTabEl = document.getElementById(`tab-${tabName}`);
+        if (activeNav) activeNav.classList.add('active');
+        if (activeTabEl) activeTabEl.classList.remove('hidden');
 
         // Load data collection summary when that tab is opened
         if (tabName === 'datacollection') {
@@ -832,13 +845,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-    // Hook into existing selectSession to add the panel whenever a session is selected
-    const _origSelectSession = window.selectSession;
-    window.selectSession = function(sessionId) {
-        if (_origSelectSession) _origSelectSession(sessionId);
-        // Add intruder label panel after a short delay (let deep-dive render first)
-        setTimeout(() => renderIntruderLabelPanel(sessionId), 300);
-    };
+    // No window hook needed as renderIntruderLabelPanel is called directly in local selectSession
 
 
     // ==========================================
