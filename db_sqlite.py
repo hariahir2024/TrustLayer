@@ -22,8 +22,8 @@ from constants import (
     GENERIC_BASELINE_ACTIVE_UNTIL_SESSIONS,
 )
 
-DB_PATH = "data/behaviorshield.db"
-PROFILES_DIR = "profiles"
+DB_PATH = r"C:\Users\LOQ\Documents\antigravity\behaviorshield.db"
+PROFILES_DIR = r"C:\Users\LOQ\Documents\antigravity\profiles"
 
 # Thread-safe in-memory cache for loaded model objects (PyTorch/sklearn)
 # Since binary models cannot be cleanly stored in SQLite directly, they are saved as files
