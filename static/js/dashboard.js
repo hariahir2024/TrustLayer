@@ -741,5 +741,317 @@ document.addEventListener('DOMContentLoaded', function() {
 
         document.getElementById(`nav-item-${tabName}`).classList.add('active');
         document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+
+        // Load data collection summary when that tab is opened
+        if (tabName === 'datacollection') {
+            fetchDataCollectionSummary();
+        }
     };
+
+
+    // ==========================================
+    // STREAM 6A — INTRUDER SESSION LABELING
+    // ==========================================
+
+    /**
+     * Render the "Data Collection" panel inside the session deep-dive drawer.
+     * Called by renderDeepDive() / selectSession() after showing session details.
+     */
+    function renderIntruderLabelPanel(sessionId) {
+        const existingPanel = document.getElementById('intruder-label-panel');
+        if (existingPanel) existingPanel.remove();
+
+        const panel = document.createElement('div');
+        panel.id = 'intruder-label-panel';
+        panel.style.cssText = `
+            margin-top: 20px;
+            padding: 16px;
+            background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.3);
+            border-radius: 10px;
+        `;
+        panel.innerHTML = `
+            <div style="font-size:12px;font-weight:600;color:#fbbf24;margin-bottom:10px;letter-spacing:0.05em;">
+                🔬 DATA COLLECTION — INTRUDER LABELING
+            </div>
+            <p style="font-size:11px;color:#94a3b8;margin-bottom:12px;line-height:1.5;">
+                Use after a friend/family member has completed their test sessions on this account.
+                Labeling marks sessions as intruder for XGBoost retraining.
+            </p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="btn-label-this-session"
+                    onclick="labelIntruderSession('${sessionId}', false)"
+                    style="padding:8px 14px;background:rgba(251,191,36,0.15);border:1px solid #fbbf24;
+                           color:#fbbf24;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">
+                    Mark This Session as Intruder
+                </button>
+                <button id="btn-label-all-recent"
+                    onclick="labelIntruderSession('${sessionId}', true)"
+                    style="padding:8px 14px;background:rgba(239,68,68,0.15);border:1px solid #ef4444;
+                           color:#ef4444;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">
+                    Mark All Recent Sessions (30 min) as Intruder
+                </button>
+            </div>
+            <div id="intruder-label-result" style="margin-top:10px;font-size:11px;color:#22c55e;display:none;"></div>
+        `;
+
+        // Append to the deep-dive workspace
+        const workspace = document.getElementById('deep-dive-workspace');
+        if (workspace) workspace.appendChild(panel);
+    }
+
+    window.labelIntruderSession = async function(sessionId, labelAllRecent) {
+        const confirmMsg = labelAllRecent
+            ? `Mark ALL sessions for this user in the last 30 minutes as INTRUDER?\n\nThis cannot be undone and will affect XGBoost training data.`
+            : `Mark session ${sessionId.substring(0,8)}... as INTRUDER?\n\nThis cannot be undone.`;
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch('/api/admin/label-intruder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: sessionId, label_all_recent: labelAllRecent })
+            });
+            const data = await res.json();
+
+            const resultEl = document.getElementById('intruder-label-result');
+            if (res.ok && resultEl) {
+                const count = data.sessions_labeled || 1;
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#22c55e';
+                resultEl.textContent = `✓ ${count} session(s) labeled as intruder. Data collection updated.`;
+            } else if (resultEl) {
+                resultEl.style.display = 'block';
+                resultEl.style.color = '#ef4444';
+                resultEl.textContent = `Error: ${data.detail || 'Unknown error'}`;
+            }
+        } catch (err) {
+            console.error('Error labeling intruder session:', err);
+            showToast('Failed to label session — check connection', 'error');
+        }
+    };
+
+    // Hook into existing selectSession to add the panel whenever a session is selected
+    const _origSelectSession = window.selectSession;
+    window.selectSession = function(sessionId) {
+        if (_origSelectSession) _origSelectSession(sessionId);
+        // Add intruder label panel after a short delay (let deep-dive render first)
+        setTimeout(() => renderIntruderLabelPanel(sessionId), 300);
+    };
+
+
+    // ==========================================
+    // STREAM 6B — DATA COLLECTION SUMMARY PANEL
+    // ==========================================
+
+    async function fetchDataCollectionSummary() {
+        const container = document.getElementById('data-collection-panel-content');
+        if (!container) return;
+        container.innerHTML = '<p style="color:#94a3b8;font-size:12px;">Loading...</p>';
+
+        try {
+            const res = await fetch('/api/admin/data-collection-summary');
+            const data = await res.json();
+            renderDataCollectionSummary(data, container);
+        } catch (err) {
+            container.innerHTML = '<p style="color:#ef4444;font-size:12px;">Failed to load summary</p>';
+        }
+    }
+
+    function renderDataCollectionSummary(data, container) {
+        const totals = data.totals || {};
+        const users  = data.users  || [];
+
+        const readyColor = totals.ready_for_retraining ? '#22c55e' : '#f59e0b';
+        const readyText  = totals.ready_for_retraining
+            ? '✓ Ready for XGBoost retraining!'
+            : `Need ${Math.max(0, 20 - (totals.total_intruders || 0))} more intruder sessions`;
+
+        let rows = users.map(u => `
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:8px 12px;color:#e2e8f0;">${u.username}</td>
+                <td style="padding:8px 12px;">
+                    <span style="background:rgba(99,102,241,0.2);color:#a5b4fc;padding:2px 8px;border-radius:4px;font-size:10px;">
+                        ${u.device_class}
+                    </span>
+                </td>
+                <td style="padding:8px 12px;color:#94a3b8;">
+                    <span style="color:${(u.session_count||0) >= 10 ? '#22c55e' : '#f59e0b'}">
+                        ${u.session_count || 0}
+                    </span> / 15
+                </td>
+                <td style="padding:8px 12px;">
+                    ${u.enrolled
+                        ? '<span style="color:#22c55e;">✅ Enrolled</span>'
+                        : '<span style="color:#f59e0b;">⏳ Pending</span>'}
+                </td>
+                <td style="padding:8px 12px;color:${(u.intruder_count||0)>0 ? '#ef4444' : '#94a3b8'};">
+                    ${u.intruder_count || 0}
+                </td>
+            </tr>
+        `).join('');
+
+        container.innerHTML = `
+            <!-- Totals row -->
+            <div style="display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:100px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:8px;padding:12px;text-align:center;">
+                    <div style="font-size:22px;font-weight:700;color:#a5b4fc;">${totals.total_users || 0}</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Total Users</div>
+                </div>
+                <div style="flex:1;min-width:100px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:8px;padding:12px;text-align:center;">
+                    <div style="font-size:22px;font-weight:700;color:#22c55e;">${totals.total_sessions || 0}</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Total Sessions</div>
+                </div>
+                <div style="flex:1;min-width:100px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:8px;padding:12px;text-align:center;">
+                    <div style="font-size:22px;font-weight:700;color:#ef4444;">${totals.total_intruders || 0}</div>
+                    <div style="font-size:10px;color:#94a3b8;margin-top:4px;">Intruder Sessions</div>
+                </div>
+            </div>
+
+            <!-- Retraining readiness -->
+            <div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;
+                        background:rgba(${totals.ready_for_retraining ? '34,197,94' : '245,158,11'},0.08);
+                        border:1px solid rgba(${totals.ready_for_retraining ? '34,197,94' : '245,158,11'},0.25);
+                        font-size:12px;color:${readyColor};">
+                ${readyText}
+                ${totals.ready_for_retraining
+                    ? '<br><span style="color:#94a3b8;font-size:10px;">Run: python scripts/retrain_xgb_augmented.py</span>'
+                    : ''}
+            </div>
+
+            <!-- User table -->
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead>
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.1);">
+                        <th style="padding:6px 12px;color:#64748b;font-weight:600;text-align:left;">User</th>
+                        <th style="padding:6px 12px;color:#64748b;font-weight:600;text-align:left;">Device</th>
+                        <th style="padding:6px 12px;color:#64748b;font-weight:600;text-align:left;">Sessions</th>
+                        <th style="padding:6px 12px;color:#64748b;font-weight:600;text-align:left;">Status</th>
+                        <th style="padding:6px 12px;color:#64748b;font-weight:600;text-align:left;">Intruders</th>
+                    </tr>
+                </thead>
+                <tbody>${rows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#475569;">No users yet</td></tr>'}</tbody>
+            </table>
+            <button onclick="fetchDataCollectionSummary()"
+                style="margin-top:12px;padding:6px 14px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);
+                       color:#a5b4fc;border-radius:6px;font-size:11px;cursor:pointer;">
+                ↻ Refresh
+            </button>
+        `;
+    }
+
+    // Auto-refresh data collection summary every 60 seconds if visible
+    setInterval(() => {
+        if (activeTab === 'datacollection') fetchDataCollectionSummary();
+    }, 60000);
+
+
+    // ==========================================
+    // BONUS B2 — ADVISORY MODE TOGGLE
+    // ==========================================
+
+    let currentMode = 'active';
+
+    async function fetchCurrentMode() {
+        try {
+            const res = await fetch('/api/admin/mode');
+            const data = await res.json();
+            currentMode = data.mode || 'active';
+            updateModeToggleUI(currentMode);
+        } catch (e) { /* non-critical */ }
+    }
+
+    function updateModeToggleUI(mode) {
+        const btn = document.getElementById('btn-mode-toggle');
+        const badge = document.getElementById('mode-badge');
+        if (!btn) return;
+
+        if (mode === 'advisory') {
+            btn.textContent = '👁️ Advisory Mode — Click to Activate';
+            btn.style.background = 'rgba(99,102,241,0.2)';
+            btn.style.borderColor = '#6366f1';
+            btn.style.color = '#a5b4fc';
+            if (badge) { badge.textContent = 'ADVISORY'; badge.style.color = '#a5b4fc'; }
+        } else {
+            btn.textContent = '🔴 Active Mode — Click for Advisory';
+            btn.style.background = 'rgba(239,68,68,0.15)';
+            btn.style.borderColor = '#ef4444';
+            btn.style.color = '#ef4444';
+            if (badge) { badge.textContent = 'ACTIVE'; badge.style.color = '#ef4444'; }
+        }
+    }
+
+    window.toggleAdvisoryMode = async function() {
+        const newMode = currentMode === 'active' ? 'advisory' : 'active';
+        const confirmMsg = newMode === 'advisory'
+            ? 'Switch to ADVISORY MODE?\n\nThe system will continue scoring but will NOT challenge or freeze users. Risk scores remain visible on this dashboard.'
+            : 'Switch to ACTIVE MODE?\n\nThe system will resume applying friction (challenges, freezes) to high-risk sessions.';
+
+        if (!confirm(confirmMsg)) return;
+
+        try {
+            const res = await fetch('/api/admin/set-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: newMode })
+            });
+            if (res.ok) {
+                currentMode = newMode;
+                updateModeToggleUI(newMode);
+                showToast(`System switched to ${newMode.toUpperCase()} mode`, newMode === 'advisory' ? 'info' : 'warning');
+            }
+        } catch (err) {
+            console.error('Error toggling mode:', err);
+        }
+    };
+
+    // Load current mode on startup
+    fetchCurrentMode();
+
+    // Handle mode_changed events from WebSocket
+    function handleModeChanged(data) {
+        currentMode = data.mode || 'active';
+        updateModeToggleUI(currentMode);
+    }
+
+    // ==========================================
+    // TOAST NOTIFICATION HELPER
+    // ==========================================
+    function showToast(message, type = 'info') {
+        const existing = document.getElementById('dashboard-toast');
+        if (existing) existing.remove();
+
+        const colors = {
+            info:    { bg: 'rgba(99,102,241,0.9)',  border: '#6366f1' },
+            success: { bg: 'rgba(34,197,94,0.9)',   border: '#22c55e' },
+            warning: { bg: 'rgba(245,158,11,0.9)',  border: '#f59e0b' },
+            error:   { bg: 'rgba(239,68,68,0.9)',   border: '#ef4444' },
+        };
+        const c = colors[type] || colors.info;
+
+        const toast = document.createElement('div');
+        toast.id = 'dashboard-toast';
+        toast.style.cssText = `
+            position:fixed;bottom:24px;right:24px;z-index:9999;
+            background:${c.bg};border:1px solid ${c.border};
+            color:#fff;padding:12px 20px;border-radius:10px;
+            font-size:13px;font-weight:500;
+            box-shadow:0 4px 20px rgba(0,0,0,0.4);
+            animation:fadeIn 0.3s ease;
+        `;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3500);
+    }
+    window.showToast = showToast;
+
+    // Extend WS message handler to process mode_changed events
+    const _origHandleWS = window._handleWSMessage;
+    window._handleWSMessage = function(data) {
+        if (_origHandleWS) _origHandleWS(data);
+        if (data.type === 'mode_changed') handleModeChanged(data);
+    };
+
 });
+

@@ -13,7 +13,7 @@ const BehaviorShield = (function() {
         DEFAULT_INTERVAL_MS: 30000, // 30 seconds (Green)
         AMBER_LOW_INTERVAL_MS: 10000, // 10 seconds (Amber Low)
         API_SCORE_URL: '/api/score',
-        PASSPHRASE_LENGTH: 17
+        PASSPHRASE_LENGTH: 11   // dynamic formula: First4 + Last4 + @ + YY = 11 chars
     };
 
     // State variables

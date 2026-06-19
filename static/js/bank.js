@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // State
     let currentUsername = "";
-    let userPassphrase = "SecureAuth@India1";
+    let userPassphrase = "";   // fetched from server after login/registration
     let sessionId = null;
     let enrollmentSamplesCollected = 0;
     let isMouseCalibrated = false;
@@ -507,7 +507,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     email: email,
                     mobile: mobile,
                     city: city,
-                    date_of_birth: dob
+                    date_of_birth: dob,
+                    account_type: (document.getElementById('reg-account-type') || {}).value || 'savings',
                 })
             });
 
@@ -519,10 +520,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const data = await response.json();
             currentUsername = data.username;
+            // Set the per-user passphrase from the registration response
+            if (data.passphrase) userPassphrase = data.passphrase;
 
             // Display account created card details
             displays.createdAccount.textContent = data.account_number;
-            displays.createdPassphrase.textContent = data.passphrase;
+            displays.createdPassphrase.textContent = data.passphrase || '-';
             showView('created');
 
             // Clear registration inputs
@@ -937,6 +940,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function showChallengeModal() {
+        const displayEl = document.getElementById('challenge-passphrase-display');
+        if (displayEl) {
+            displayEl.textContent = userPassphrase || "";
+        }
         overlays.challenge.classList.remove('hidden');
         inputs.challenge.value = "";
         displays.challengeError.classList.add('hidden');
@@ -1532,21 +1539,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.loadUserAuditLog = async function() {
         try {
-            const res = await fetch(`/api/user/${currentUsername}/security-log?limit=5`);
+            // Try the new endpoint first, fall back to old one
+            let res = await fetch(`/api/security-events/${currentUsername}?limit=10`);
+            if (!res.ok) res = await fetch(`/api/user/${currentUsername}/security-log?limit=10`);
             if (res.ok) {
                 const data = await res.json();
+                const events = data.events || [];
                 const tbody = document.getElementById('profile-audit-table-body');
                 tbody.innerHTML = '';
-                if (data.events && data.events.length > 0) {
-                    data.events.forEach(evt => {
-                        const dateStr = new Date(evt.timestamp * 1000).toLocaleString();
-                        const score = evt.risk_score !== null ? evt.risk_score.toFixed(1) : '-';
+                if (events.length > 0) {
+                    events.forEach(evt => {
+                        const ts = evt.timestamp || evt.created_at || 0;
+                        const dateStr = ts ? new Date(ts * 1000).toLocaleString() : '-';
+                        const score = evt.risk_score != null ? Number(evt.risk_score).toFixed(1) : '-';
+                        const statusText = evt.status || evt.event_type || 'SCORE_UPDATE';
                         const row = document.createElement('tr');
                         
                         let badgeClass = 'badge-green';
-                        if (evt.status.includes('FAIL') || evt.status.includes('FROZEN') || evt.status.includes('BLOCKED')) {
+                        if (statusText.includes('FAIL') || statusText.includes('FROZEN') || statusText.includes('BLOCKED') || statusText.includes('BOT')) {
                             badgeClass = 'badge-red';
-                        } else if (evt.status.includes('AMBER') || evt.status.includes('CHALLENGE')) {
+                        } else if (statusText.includes('AMBER') || statusText.includes('CHALLENGE') || statusText.includes('REAUTH')) {
                             badgeClass = 'badge-amber';
                         }
                         
@@ -1555,12 +1567,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <td class="text-mono">${evt.device_class || 'DESKTOP'}</td>
                             <td class="text-mono">${evt.ip_address || '-'}</td>
                             <td class="fw-600">${score}</td>
-                            <td><span class="badge ${badgeClass}">${evt.status}</span></td>
+                            <td><span class="badge ${badgeClass}">${statusText}</span></td>
                         `;
                         tbody.appendChild(row);
                     });
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No security events found.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No security events recorded yet.</td></tr>';
                 }
             }
         } catch (e) {

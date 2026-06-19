@@ -1340,3 +1340,50 @@ def get_database_summary() -> dict:
         "events": e,
         "ips": i
     }
+
+
+# =============================================================================
+# ALIASES — standardised names expected by app.py (Stream 1/B3)
+# =============================================================================
+
+def get_user_security_events(username: str, limit: int = 10) -> list:
+    """
+    Return recent security/login events for a user.
+    Alias for get_security_events_for_user with a consistent name.
+    Used by: GET /api/security-events/{username}
+    """
+    return get_security_events_for_user(username, limit=limit)
+
+
+def get_session_history(username: str, limit: int = 10) -> list:
+    """
+    Return the persistent session history rows for a user from session_history table.
+    Each row contains: session_id, device_class, ip_address, final_score, final_band,
+    is_intruder, created_at.
+    Used by: GET /api/session-history/{username}
+    """
+    conn = _get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT session_id, device_class, ip_address, final_score, final_band,
+                   is_intruder, created_at
+            FROM session_history
+            WHERE username = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (username, limit))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def reset_all_including_db() -> None:
+    """
+    Hard wipe: deletes all rows from every table AND clears model files.
+    Used by: scripts/seed_demo_data.py --reset
+    """
+    reset_all()   # clears tables and model cache (existing function)
+    print("[SQLite] Hard wipe complete.")
+

@@ -71,10 +71,21 @@
       <div class="sidebar-nav-item" id="nav-item-threats" onclick="switchTab('threats')">
         🚨 Active Alerts
       </div>
+      <div class="sidebar-nav-item" id="nav-item-datacollection" onclick="switchTab('datacollection')">
+        🔬 Data Collection
+      </div>
     </nav>
 
     <div class="sidebar-header">Quick Admin Controls</div>
     <nav class="sidebar-nav">
+      <!-- Advisory / Active Mode Toggle (B2) -->
+      <button id="btn-mode-toggle"
+        onclick="toggleAdvisoryMode()"
+        style="width:100%;padding:8px 12px;margin-bottom:8px;background:rgba(239,68,68,0.15);
+               border:1px solid #ef4444;border-radius:8px;color:#ef4444;
+               font-size:11px;font-weight:600;cursor:pointer;text-align:left;">
+        🔴 Active Mode — Click for Advisory
+      </button>
       <button class="btn btn-secondary btn-sm mb-2" id="btn-soft-reset" style="text-align: left; justify-content: flex-start; padding-left: 0.75rem;">
         🔄 Clear Live Sessions
       </button>
@@ -277,7 +288,45 @@
       </div>
     </div>
 
+    <!-- Tab 3: Data Collection Campaign (Stream 6B) -->
+    <div id="tab-datacollection" class="w-full hidden">
+
+      <!-- Header -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <h3>🔬 Data Collection Campaign</h3>
+          <span class="text-xs text-muted">Track session coverage and intruder labels for XGBoost retraining</span>
+        </div>
+        <div id="data-collection-panel-content" style="padding:16px;">
+          <p style="color:#94a3b8;font-size:12px;">Click "Data Collection" in the sidebar to load...</p>
+        </div>
+      </div>
+
+      <!-- How-to instructions -->
+      <div class="card" style="border:1px solid rgba(251,191,36,0.2);background:rgba(251,191,36,0.04);">
+        <div class="card-header">
+          <h3 style="color:#fbbf24;">📋 How to Collect Intruder Data</h3>
+        </div>
+        <div style="padding:16px;font-size:12px;color:#94a3b8;line-height:1.8;">
+          <ol style="padding-left:1.2em;">
+            <li><strong style="color:#e2e8f0;">Have a friend/family log in</strong> as a test user (use their own account).</li>
+            <li>Ask them to complete <strong style="color:#e2e8f0;">2–3 sessions</strong> typing deliberately differently — like an intruder would (slow, hesitant, unfamiliar).</li>
+            <li>After they finish, come to the <strong style="color:#e2e8f0;">Real-Time Monitor</strong> tab and click on their session.</li>
+            <li>In the session drawer, use the <strong style="color:#fbbf24;">"Mark as Intruder"</strong> button to retroactively label those sessions.</li>
+            <li>Repeat until you have <strong style="color:#ef4444;">20+ intruder-labeled sessions</strong> across different users.</li>
+            <li>Run <code style="background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px;color:#a5b4fc;">python scripts/retrain_xgb_augmented.py</code> to retrain XGBoost with real data.</li>
+          </ol>
+          <div style="margin-top:16px;padding:12px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:8px;">
+            <strong style="color:#22c55e;">Multi-device tip:</strong> Each (user, device) pair builds a separate profile.
+            Desktop and mobile will NOT interfere with each other's baselines.
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-datacollection -->
+
   </main>
+
 
   <!-- Script tags -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

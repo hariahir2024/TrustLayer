@@ -1,16 +1,41 @@
 {
   "name": "Bharat Suraksha Bank",
   "short_name": "BSB NetBanking",
-  "description": "Bharat Suraksha Bank Premium Internet NetBanking Portal",
+  "description": "Bharat Suraksha Bank — AI-powered behavioral biometric internet banking",
   "start_url": "/bank",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#030712",
   "theme_color": "#06b6d4",
+  "lang": "en",
+  "categories": ["finance", "banking"],
   "icons": [
     {
-      "src": "/static/js/sdk.js",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%23030712'/><text y='140' x='20' font-size='140' font-family='Arial'>🏦</text></svg>",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%23030712'/><text y='380' x='40' font-size='380' font-family='Arial'>🏦</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Fund Transfer",
+      "short_name": "Transfer",
+      "description": "Quickly transfer funds",
+      "url": "/bank#transfer"
+    },
+    {
+      "name": "UPI Payment",
+      "short_name": "UPI",
+      "description": "Make a UPI payment",
+      "url": "/bank#upi"
     }
   ]
 }
