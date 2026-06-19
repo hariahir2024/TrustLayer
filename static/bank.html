@@ -288,7 +288,10 @@
           <label class="form-label" for="enroll-input">Type passphrase</label>
           <span class="text-mono text-xs text-secondary" id="enroll-progress-text">Sample 0/5</span>
         </div>
-        <input type="text" id="enroll-input" class="form-input text-center text-mono" autocomplete="off" placeholder="Type here and press Enter...">
+        <div class="flex gap-2">
+          <input type="text" id="enroll-input" class="form-input text-center text-mono flex-1" autocomplete="off" placeholder="Type here and press Enter...">
+          <button id="enroll-submit-btn" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: var(--radius); font-weight: 600;">Submit</button>
+        </div>
       </div>
 
       <div class="score-bar mb-4">

@@ -577,51 +577,64 @@ document.addEventListener('DOMContentLoaded', function() {
         if (tracePath) tracePath.setAttribute('d', '');
     }
 
+    async function submitEnrollmentSample() {
+        const text = inputs.enroll.value.trim();
+        const targetPass = document.getElementById('enroll-passphrase-display').textContent.trim();
+        if (text !== targetPass) {
+            alert(`Passphrase does not match exactly! Please type: ${targetPass}`);
+            inputs.enroll.value = "";
+            BehaviorShield.extractKeyEvents(); 
+            return;
+        }
+
+        const keyEvents = BehaviorShield.extractKeyEvents();
+
+        try {
+            const response = await fetch('/api/enroll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: currentUsername,
+                    key_events: keyEvents,
+                    field_focus_ts: currentFocusFieldTs,
+                    device_class: BehaviorShield.getDeviceFingerprint().device_class
+                })
+            });
+
+            const data = await response.json();
+            enrollmentSamplesCollected = data.count;
+
+            displays.enrollProgressText.textContent = `Sample ${enrollmentSamplesCollected}/5`;
+            displays.enrollProgressBar.style.width = `${(enrollmentSamplesCollected / 5) * 100}%`;
+            inputs.enroll.value = "";
+            currentFocusFieldTs = Date.now();
+
+            if (data.complete) {
+                inputs.enroll.disabled = true;
+                const enrollSubmitBtn = document.getElementById('enroll-submit-btn');
+                if (enrollSubmitBtn) enrollSubmitBtn.disabled = true;
+                document.getElementById('enroll-mouse-step').classList.remove('hidden');
+                initializeMouseCalibration();
+            }
+        } catch (err) {
+            console.error("Enrollment failed:", err);
+            alert("Failed to submit sample.");
+        }
+    }
+
     inputs.enroll.addEventListener('keydown', async function(e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
-            const text = inputs.enroll.value.trim();
-            const targetPass = document.getElementById('enroll-passphrase-display').textContent.trim();
-            if (text !== targetPass) {
-                alert(`Passphrase does not match exactly! Please type: ${targetPass}`);
-                inputs.enroll.value = "";
-                BehaviorShield.extractKeyEvents(); 
-                return;
-            }
-
-            const keyEvents = BehaviorShield.extractKeyEvents();
-
-            try {
-                const response = await fetch('/api/enroll', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: currentUsername,
-                        key_events: keyEvents,
-                        field_focus_ts: currentFocusFieldTs,
-                        device_class: BehaviorShield.getDeviceFingerprint().device_class
-                    })
-                });
-
-                const data = await response.json();
-                enrollmentSamplesCollected = data.count;
-
-                displays.enrollProgressText.textContent = `Sample ${enrollmentSamplesCollected}/5`;
-                displays.enrollProgressBar.style.width = `${(enrollmentSamplesCollected / 5) * 100}%`;
-                inputs.enroll.value = "";
-                currentFocusFieldTs = Date.now();
-
-                if (data.complete) {
-                    inputs.enroll.disabled = true;
-                    document.getElementById('enroll-mouse-step').classList.remove('hidden');
-                    initializeMouseCalibration();
-                }
-            } catch (err) {
-                console.error("Enrollment failed:", err);
-                alert("Failed to submit sample.");
-            }
+            await submitEnrollmentSample();
         }
     });
+
+    const enrollSubmitBtn = document.getElementById('enroll-submit-btn');
+    if (enrollSubmitBtn) {
+        enrollSubmitBtn.addEventListener('click', async function() {
+            await submitEnrollmentSample();
+        });
+    }
 
     buttons.enrollCancel.addEventListener('click', () => showView('username'));
 
@@ -644,14 +657,14 @@ document.addEventListener('DOMContentLoaded', function() {
         label.textContent = "Move cursor to START to begin tracing";
         if (tracePath) tracePath.setAttribute('d', '');
 
-        area.addEventListener('mousemove', function(e) {
+        function handleInteraction(clientX, clientY) {
             if (isMouseCalibrated) return;
             
             const rect = area.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            const mouseX = clientX - rect.left;
+            const mouseY = clientY - rect.top;
             
-            // Map mouse coordinates to SVG viewBox (0 0 560 150)
+            // Map coordinates to SVG viewBox (0 0 560 150)
             const svgX = (mouseX / rect.width) * 560;
             const svgY = (mouseY / rect.height) * 150;
 
@@ -715,9 +728,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("[BSB] Mouse calibration complete.");
                 }
             }
-        });
+        }
 
-        area.addEventListener('mouseleave', function() {
+        function handleLeave() {
             if (!isMouseCalibrated) {
                 isTracing = false;
                 traceCoords = [];
@@ -727,9 +740,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 ball.setAttribute('fill', 'var(--cyan)');
                 ball.setAttribute('r', '10');
                 label.textContent = "Move cursor to START to begin tracing";
-                console.log("[BSB] Tracing reset on mouseleave");
+                console.log("[BSB] Tracing reset");
             }
+        }
+
+        area.addEventListener('mousemove', function(e) {
+            handleInteraction(e.clientX, e.clientY);
         });
+
+        area.addEventListener('touchmove', function(e) {
+            if (e.touches && e.touches.length > 0) {
+                // Prevent scrolling while tracing
+                e.preventDefault();
+                const touch = e.touches[0];
+                handleInteraction(touch.clientX, touch.clientY);
+            }
+        }, { passive: false });
+
+        area.addEventListener('touchstart', function(e) {
+            if (e.touches && e.touches.length > 0) {
+                const touch = e.touches[0];
+                handleInteraction(touch.clientX, touch.clientY);
+            }
+        }, { passive: true });
+
+        area.addEventListener('mouseleave', handleLeave);
+        area.addEventListener('touchend', handleLeave);
     }
 
     buttons.enrollComplete.addEventListener('click', function() {
@@ -744,7 +780,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     buttons.loginSubmit.addEventListener('click', handleLogin);
     inputs.loginPass.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
             handleLogin();
         }
@@ -953,7 +989,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     buttons.challengeSubmit.addEventListener('click', submitChallenge);
     inputs.challenge.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
             submitChallenge();
         }
