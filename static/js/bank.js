@@ -177,6 +177,30 @@ document.addEventListener('DOMContentLoaded', function() {
     inputs.loginPass.addEventListener('focus', () => currentFocusFieldTs = Date.now());
     inputs.challenge.addEventListener('focus', () => currentFocusFieldTs = Date.now());
 
+    // Mobile menu toggle handlers
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('open');
+            }
+        });
+    }
+
+    // Close sidebar if clicking outside it on mobile
+    document.addEventListener('click', function(e) {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar && sidebar.classList.contains('open')) {
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const isClickInside = sidebar.contains(e.target) || (mobileMenuBtn && mobileMenuBtn.contains(e.target));
+            if (!isClickInside) {
+                sidebar.classList.remove('open');
+            }
+        }
+    });
+
     // ==========================================
     // VIEW TRANSITIONS
     // ==========================================
@@ -220,6 +244,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('upi-my-vpa').textContent = `${currentUsername}@bsb`;
         } else if (tabName === 'fd') {
             updateFdCalculation();
+        }
+
+        // Close mobile navigation sidebar when selecting a tab
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('open');
         }
     };
 
@@ -588,6 +618,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const keyEvents = BehaviorShield.extractKeyEvents();
+        if (!keyEvents || keyEvents.length === 0) {
+            alert("No typing dynamics recorded. Please type the passphrase character-by-character.");
+            return;
+        }
 
         try {
             const response = await fetch('/api/enroll', {
@@ -602,6 +636,12 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             const data = await response.json();
+            if (!response.ok) {
+                alert(data.detail || "Failed to submit sample. Please re-type it naturally.");
+                inputs.enroll.value = "";
+                return;
+            }
+
             enrollmentSamplesCollected = data.count;
 
             displays.enrollProgressText.textContent = `Sample ${enrollmentSamplesCollected}/5`;
@@ -732,6 +772,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
         function handleLeave() {
             if (!isMouseCalibrated) {
+                // If we were tracing and got close to the end, count it as success on release/leave
+                const ballX = parseFloat(ball.getAttribute('cx'));
+                if (isTracing && ballX >= 480) {
+                    isTracing = false;
+                    isMouseCalibrated = true;
+                    ball.setAttribute('cx', '520');
+                    ball.setAttribute('cy', '75');
+                    ball.setAttribute('fill', 'var(--green)');
+                    ball.setAttribute('r', '10');
+                    label.textContent = "Mouse path verified!";
+                    
+                    displays.calibrationSuccess.classList.remove('hidden');
+                    buttons.enrollComplete.disabled = false;
+                    console.log("[BSB] Mouse calibration complete via close-enough end touch.");
+                    return;
+                }
+
                 isTracing = false;
                 traceCoords = [];
                 if (tracePath) tracePath.setAttribute('d', '');

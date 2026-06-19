@@ -140,6 +140,46 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+
+    /* Mobile Responsive Overrides */
+    .mobile-menu-btn {
+      display: none !important;
+    }
+
+    @media (max-width: 768px) {
+      .mobile-menu-btn {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: var(--text-primary);
+        font-size: 1.6rem;
+        cursor: pointer;
+        padding: 0 0.5rem;
+        outline: none;
+      }
+      .dashboard-layout {
+        height: calc(100vh - 70px);
+      }
+      .sidebar.bank-nav-sidebar {
+        position: fixed;
+        top: 70px;
+        left: -280px;
+        width: 280px;
+        height: calc(100vh - 70px);
+        z-index: 999;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 10px 0 25px rgba(0, 0, 0, 0.35);
+        background: #ffffff;
+      }
+      .sidebar.bank-nav-sidebar.open {
+        left: 0;
+      }
+      .dashboard-content-area {
+        padding: 1.25rem;
+      }
+    }
   </style>
 </head>
 <body class="bank-page">
@@ -147,6 +187,7 @@
   <!-- Main Bank Header Navigation -->
   <header class="navbar">
     <div class="navbar-brand">
+      <button id="mobile-menu-btn" class="mobile-menu-btn">☰</button>
       <div class="bank-logo">BSB</div>
       <span>Bharat Suraksha Bank</span>
     </div>

@@ -187,23 +187,43 @@ const BehaviorShield = (function() {
 
         element.addEventListener('focus', function() {
             fieldFocusTimestamp = Date.now();
+            for (const k in activeKeys) delete activeKeys[k];
+            activeKeys._queue = [];
         });
 
         element.addEventListener('keydown', function(e) {
             const now = Date.now();
             let pos = -1;
 
-            if (e.key === 'Backspace') {
+            const isBackspace = (e.key === 'Backspace' || e.keyCode === 8);
+            const ignoredKeys = new Set([
+                'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 
+                'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'
+            ]);
+
+            if (isBackspace) {
                 pos = -1;
-            } else if (e.key.length === 1) {
+            } else if (ignoredKeys.has(e.key) || ignoredKeys.has(e.code)) {
+                return; // Ignore control keys
+            } else {
                 // Determine 1-indexed position of where the character will go
                 pos = element.selectionStart + 1;
-            } else {
-                return; // Ignore control keys other than Backspace
             }
 
-            // Store position of active key to pair it on keyup
-            activeKeys[e.code] = pos;
+            // Generate a tracking key
+            let trackingKey = null;
+            if (e.code && e.code !== 'Unidentified') {
+                trackingKey = e.code;
+            } else if (e.key && e.key !== 'Unidentified') {
+                trackingKey = e.key;
+            }
+
+            if (trackingKey) {
+                activeKeys[trackingKey] = pos;
+            } else {
+                if (!activeKeys._queue) activeKeys._queue = [];
+                activeKeys._queue.push(pos);
+            }
 
             keyEventsBuffer.push({
                 timestamp: now,
@@ -217,15 +237,30 @@ const BehaviorShield = (function() {
 
         element.addEventListener('keyup', function(e) {
             const now = Date.now();
-            const pos = activeKeys[e.code];
+            const isBackspace = (e.key === 'Backspace' || e.keyCode === 8);
+            
+            let pos = undefined;
+            let trackingKey = null;
+            if (e.code && e.code !== 'Unidentified') {
+                trackingKey = e.code;
+            } else if (e.key && e.key !== 'Unidentified') {
+                trackingKey = e.key;
+            }
+
+            if (trackingKey && activeKeys[trackingKey] !== undefined) {
+                pos = activeKeys[trackingKey];
+                delete activeKeys[trackingKey];
+            } else if (activeKeys._queue && activeKeys._queue.length > 0) {
+                pos = activeKeys._queue.shift();
+            }
+
             if (pos !== undefined) {
                 keyEventsBuffer.push({
                     timestamp: now,
                     event: 'up',
                     position: pos
                 });
-                delete activeKeys[e.code];
-            } else if (e.key === 'Backspace') {
+            } else if (isBackspace) {
                 keyEventsBuffer.push({
                     timestamp: now,
                     event: 'up',
