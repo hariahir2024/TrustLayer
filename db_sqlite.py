@@ -22,8 +22,12 @@ from constants import (
     GENERIC_BASELINE_ACTIVE_UNTIL_SESSIONS,
 )
 
-DB_PATH = r"C:\Users\LOQ\Documents\antigravity\behaviorshield.db"
-PROFILES_DIR = r"C:\Users\LOQ\Documents\antigravity\profiles"
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+
+DB_PATH = str(BASE_DIR / "behaviorshield.db")
+PROFILES_DIR = str(BASE_DIR / "profiles")
 
 # Thread-safe in-memory cache for loaded model objects (PyTorch/sklearn)
 # Since binary models cannot be cleanly stored in SQLite directly, they are saved as files
