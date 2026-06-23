@@ -105,16 +105,20 @@ python verify_integration.py
 
 ## Step-by-Step Demo Walkthrough
 
-### 1. Silent Enrollment
-1. Open **Bharat Suraksha Bank** (`http://localhost:8080/bank`) and enter a new username (e.g., `solaris_tester`). Click **Continue**.
-2. Because the username is unregistered, you will see the **Enrollment Wizard**.
-3. Under the floating **Demo Controller** (bottom right), select the **Legitimate Owner** persona.
-4. Click **⚡ Quick-Fill Credentials** 5 times. The simulator programmatically types the enrollment passphrase with natural human timing variations.
-5. Sweep your mouse pointer along the curved line from **START** to **END** to calibrate your mouse profile.
-6. Click **Complete Enrollment**. The account profile is built and stored!
+### 1. Account Registration & Biometric Enrollment
+1. Open **Bharat Suraksha Bank** (`http://localhost:8080/bank`).
+2. Click **Register Here** under the Secure NetBanking Login card.
+3. Fill in the registration form details (e.g., choose a username like `solaris_tester`, enter a password, fill in your details, and set a Date of Birth).
+4. Click **Register**. The **Account Created** screen will appear, displaying a generated account number and a unique **11-character passphrase** (e.g., `SolaTest@26`).
+5. Click **Proceed to Login**. The username will be pre-filled. Enter the password you chose during registration and click **Continue**.
+6. Since this is a new account/device with no existing biometric profile, you will be redirected to the **Enrollment Wizard**.
+7. Under the floating **Demo Controller** (bottom right), select the **Legitimate Owner** persona.
+8. Click **⚡ Quick-Fill Credentials** 5 times. The simulator will type the generated passphrase with natural human variations.
+9. Sweep your mouse pointer or finger along the curved line from **START** to **END** to calibrate your touch/mouse baselines.
+10. Click **Complete Enrollment**. The secure biometric profile is now stored in the SQLite database!
 
 ### 2. Live Threat Testing
-1. Return to the portal home screen, select a persona in the **Demo Controller**, and click **⚡ Quick-Fill Credentials** on the login page:
+1. Return to the login page (`http://localhost:8080/bank`), enter your registered username and password, select a persona in the **Demo Controller**, and click **⚡ Quick-Fill Credentials**:
    - **Legitimate Owner**: Types with normal fluid speed. Log in succeeds. The SOC dashboard shows a stable, low-risk **Green** status.
    - **Human Intruder**: Types with slow, hesitant rhythms. Log in prompts an **Identity Verification modal** (typing step-up challenge) or an elevated **Amber** risk indicator.
    - **Automated Bot**: Types instantly (0ms timings). Triggers immediate bot heuristic rules, freezing the UI with a **🚨 Session Frozen** red overlay.
@@ -122,3 +126,6 @@ python verify_integration.py
    - Live Chart.js bar graph comparing hold/flight times vs enrolled baselines.
    - Mouse trajectory drawing path (Green for normal, Red for bots).
    - Analyst overrides: **Force Freeze** or **False Positive (Unfreeze)**.
+
+> [!TIP]
+> **Using Pre-Seeded Accounts**: You can bypass registration and test directly using the pre-seeded account **`demo_owner`** (Password: `HariAhir@26`). Enter `demo_owner` and the password on the login screen, select a persona from the Demo Controller, and use **⚡ Quick-Fill Credentials** to test owner, intruder, or bot scenarios.
