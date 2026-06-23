@@ -152,25 +152,21 @@
   },
   "fusion_model": {
     "model_file": "models/xgboost_fusion.pkl",
-    "trained_at": "2026-06-15T10:07:39.700668Z",
-    "system_version": "1.0.0-poc",
-    "team": "SOLARIS",
-    "hackathon": "Cyber Security Hackathon 2026 \u2014 MNNIT Allahabad",
-    "dataset": "Synthetic Behavioral Scoring Dataset (10k sessions)",
-    "n_training_samples": 8000,
-    "algorithm": "XGBoost Classifier (XGBClassifier)",
+    "trained_at": "2026-06-22T16:27:05.131405Z",
+    "dataset": "KMT Real Behavioral Biometrics Dataset (1,760 sessions) + 5,000 Synthetic sessions",
     "performance": {
-      "accuracy": 0.937,
-      "roc_auc": 0.98731,
-      "training_time_sec": 0.201
+      "accuracy": 0.879747,
+      "precision": 0.809603,
+      "recall": 0.929658,
+      "f1_score": 0.865487
     },
     "feature_importances": {
-      "keystroke_score": 0.62341,
-      "mouse_score": 0.088705,
-      "metadata_score": 0.119077,
-      "device_match": 0.068888,
-      "time_of_day_risk": 0.064813,
-      "is_enrolled": 0.035106
+      "keystroke_score": 0.237841,
+      "mouse_score": 0.093609,
+      "metadata_score": 0.099847,
+      "device_match": 0.242987,
+      "time_of_day_risk": 0.295546,
+      "is_enrolled": 0.030169
     }
   },
   "mouse_model": {

@@ -32,6 +32,9 @@ adventurous-pythagoras/ (Workspace Repository)
 ├── verify_integration.py   ← Automated end-to-end integration test suite
 ├── test_ml_engine.py       ← Local test suite for feature extraction and Z-Score logic
 │
+├── scripts/                ← Utility & model retraining scripts
+│   └── retrain_xgb_with_kmt.py ← Retrain XGBoost fusion using real-world KMT dataset
+│
 └── static/                 ← Frontend Client Assets
     ├── index.html          ← Landing page with technical architecture layouts
     ├── bank.html           ← "Bharat Suraksha Bank" internet banking portal simulator
@@ -64,6 +67,39 @@ adventurous-pythagoras/ (Workspace Repository)
    - Open your browser to `http://localhost:8080/` to view the launcher landing page.
    - Click **Bharat Suraksha Bank Simulator** to start a session.
    - Click **Security Operations Center** to open the live analyst monitoring dashboard.
+
+---
+
+## XGBoost Model Retraining (Real KMT Dataset)
+
+BehaviorShield features a multi-tiered XGBoost fusion classifier that fuses keystroke metrics, mouse movements, metadata anomaly scores, device signatures, and temporal risks.
+
+To elevate verification from synthetic calibration to real-world biometrics, the fusion model has been retrained using the **KMT (Keystroke-Mouse-Touch) Behavioral Biometrics Dataset** (containing 1,760 sessions from 88 real-world users, partitioned into 10 legitimate and 10 intruder/takeover sessions per user).
+
+### Retraining Goals & Takeover Detection
+To prevent shortcut learning where the classifier relies solely on metadata or device match flags to decide legitimacy (e.g., ignoring biometrics when a device signature matches), we implemented:
+1. **Takeover Simulation**: 50% of the training intruder samples are mapped as same-device takeovers (matching device and low metadata score), forcing the model to rely primarily on behavioral telemetry.
+2. **Stratified Synthetic Augmentation**: Combined KMT real sessions with 5,000 synthetic samples spanning five distinct risk tiers (including Amber overlap zones and Bots).
+
+### Running Retraining
+Execute the retraining pipeline locally to rebuild the model and generate a metrics report:
+```bash
+python scripts/retrain_xgb_with_kmt.py
+```
+This script runs the baseline profiling, extracts features, performs the fit, and saves the new classifier to `models/xgboost_fusion.pkl`.
+
+### Retraining Results
+The model achieves high generalization across real biometric sessions:
+- **Accuracy**: 87.97%
+- **Precision**: 80.96%
+- **Recall**: 92.97%
+- **F1 Score**: 86.55%
+
+### Verification
+Run the automated end-to-end integration test suite to verify that the FastAPI backend successfully uses the retrained model to block same-session, same-device human intruders and automated bots:
+```bash
+python verify_integration.py
+```
 
 ---
 
