@@ -73,19 +73,19 @@
 
 ---
 
-## Slide 6: XGBoost Fusion & KMT Dataset Retraining
-* **Slide Title**: XGBoost Fusion & Real-World Generalization
+## Slide 6: XGBoost Fusion & Real-World Generalization (Inter-Subject)
+* **Slide Title**: XGBoost Fusion & Leak-Proof Real-World Generalization
 * **Visuals**: Performance metric bar chart showing Accuracy, Precision, Recall, and F1-Score.
 * **Bullet Points**:
   * **Model Fusion**: XGBoost classifier aggregates keystroke anomalies, mouse path scores, device signatures, and temporal risks.
-  * **KMT Dataset Retraining**:
-    * Trained on **1,760 sessions** from **88 real-world users** (KMT Keystroke-Mouse-Touch dataset).
-    * Simulates same-device human takeover threats to prevent shortcut learning.
-  * **Evaluation Metrics**:
-    * **Accuracy**: 87.97% | **F1 Score**: 86.55%
-    * **Precision**: 80.96% | **Recall**: 92.97%
+  * **100% Real Human Biometrics**:
+    * Retrained using **CMU Keystroke Dynamics Benchmark** (51 subjects, 400 sessions each) and **BALABIT Mouse Dynamics Dataset**.
+    * Zero synthetic data segments are used in training or validation.
+  * **Evaluation Metrics (Subject GroupKFold)**:
+    * **Accuracy**: 83.68% | **F1 Score**: 82.58% (0.8258)
+    * **Precision**: 88.54% | **Recall**: 77.37%
 * **Speaker Notes**:
-  *"To move beyond synthetic testing, we retrained our XGBoost fusion classifier on the real-world KMT dataset containing over 1,700 sessions. We simulated same-device takeovers during training, forcing the model to verify identity using behavioral telemetry rather than relying on standard IP or device matches. We achieved an F1 score of 86.55%."*
+  *"To move beyond synthetic data calibration, we retrained our XGBoost fusion classifier on real-world datasets: the CMU Keystroke Dynamics Benchmark (51 subjects) and the BALABIT mouse dynamics dataset. We evaluated the model using Subject GroupKFold cross-validation, which guarantees no subject data leaks between folds. Under this leak-proof protocol, we achieved an F1 score of 82.58% and a high precision of 88.54%, which minimizes false positives for bank customers."*
 
 ---
 

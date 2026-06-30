@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # TRUSTLAYER — ml_engine.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
@@ -797,11 +797,27 @@ def _train_individual_keystroke_lstm(username: str, device_class: str = "DESKTOP
     if _generic_keystroke_lstm is not None:
         model.load_state_dict(_generic_keystroke_lstm.state_dict())
         
+    # Freeze encoder to prevent overfitting on few samples
+    for param in model.encoder_lstm.parameters():
+        param.requires_grad = False
+    for param in model.encoder_proj.parameters():
+        param.requires_grad = False
+        
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    # Optimize only unfrozen decoder parameters
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.0005)
     criterion = nn.MSELoss()
     
-    x_tensor = torch.tensor(sequences, dtype=torch.float32)
+    # Augment training sequences with slight Gaussian noise
+    augmented_seqs = []
+    for seq in sequences:
+        augmented_seqs.append(seq)
+        for _ in range(3):
+            noise = np.random.normal(0, 0.02, seq.shape)
+            augmented_seqs.append(seq + noise)
+    augmented = np.array(augmented_seqs, dtype=np.float32)
+    
+    x_tensor = torch.tensor(augmented, dtype=torch.float32)
     for epoch in range(15):
         optimizer.zero_grad()
         recon, _ = model(x_tensor)
@@ -986,11 +1002,27 @@ def _train_individual_mouse_lstm(username: str, device_class: str = "DESKTOP") -
     if _generic_mouse_lstm is not None:
         model.load_state_dict(_generic_mouse_lstm.state_dict())
         
+    # Freeze encoder to prevent overfitting on few samples
+    for param in model.encoder_lstm.parameters():
+        param.requires_grad = False
+    for param in model.encoder_proj.parameters():
+        param.requires_grad = False
+        
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    # Optimize only unfrozen decoder parameters
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.0005)
     criterion = nn.MSELoss()
     
-    dataset = TensorDataset(torch.tensor(sequences, dtype=torch.float32))
+    # Augment training sequences with slight Gaussian noise
+    augmented_seqs = []
+    for seq in sequences:
+        augmented_seqs.append(seq)
+        for _ in range(2):
+            noise = np.random.normal(0, 0.02, seq.shape)
+            augmented_seqs.append(seq + noise)
+    augmented = np.array(augmented_seqs, dtype=np.float32)
+    
+    dataset = TensorDataset(torch.tensor(augmented, dtype=torch.float32))
     loader = DataLoader(dataset, batch_size=32, shuffle=True)
     
     for epoch in range(5):

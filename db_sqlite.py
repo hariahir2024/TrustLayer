@@ -278,18 +278,32 @@ def user_exists(username: str) -> bool:
     return row is not None
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA-256."""
+    """Hash a password securely using PBKDF2-SHA256 with a random salt."""
     if not password:
         return ""
-    return hashlib.sha256(password.encode()).hexdigest()
+    import secrets
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"pbkdf2_sha256$100000${salt}${dk.hex()}"
 
 def verify_password(username: str, password: str) -> bool:
-    """Verify user's password."""
+    """Verify user's password using salted comparison with legacy fallback."""
     user = get_user(username)
     if not user:
         return False
-    pwd_hash = hash_password(password)
-    return user.get("password_hash") == pwd_hash
+    hashed = user.get("password_hash")
+    if not hashed:
+        return False
+    if not hashed.startswith("pbkdf2_sha256$"):
+        # Fallback to legacy unsalted SHA-256 for seeded users
+        return hashlib.sha256(password.encode()).hexdigest() == hashed
+    try:
+        import secrets
+        algorithm, iterations, salt, key_hex = hashed.split('$')
+        dk = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), int(iterations))
+        return secrets.compare_digest(dk.hex(), key_hex)
+    except Exception:
+        return False
 
 def update_user_password(username: str, pwd_hash: str) -> None:
     """Update the user's password hash in the database."""

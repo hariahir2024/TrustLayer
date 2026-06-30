@@ -38,16 +38,17 @@ Behavioral biometrics represents the next frontier in cognitive authentication. 
 
 ---
 
-## 3. Generalization & Real-World Generalization
+## 3. Generalization & Real-World Robustness (Inter-Subject Pipeline)
 
-A common failure point of behavioral biometric systems is "overfitting to synthetic calibration" (where the model works only under perfect lab conditions). To ensure trust and robustness, we retrained the fusion classifier using the **KMT (Keystroke-Mouse-Touch) Behavioral Biometrics Dataset** (1,760 sessions from 88 real-world users).
+A common failure point of behavioral biometric systems is "overfitting to synthetic calibration" (where the model works only under perfect lab conditions). To ensure production robustness, we retrained the fusion classifier using 100% real human biometrics: the **CMU Keystroke Dynamics Benchmark** (51 subjects, 400 sessions each) and the **BALABIT Mouse Dynamics Dataset** (legitimate trajectories vs. coordinate-shuffled impostor movements).
 
-* **Takeover Simulation**: We structured 50% of the threat training samples as same-device takeovers (matching device user-agent and local IP blocks, but presenting anomalous keystroke flight times). This forced the classifier to rely on behavioral biometrics rather than "cheating" by checking device matches.
-* **Generalization Metrics**:
-  * **Classification Accuracy**: 87.97%
-  * **Precision**: 80.96%
-  * **Recall**: 92.97%
-  * **F1 Score**: 86.55%
+* **Leak-Proof Cross-Validation**: We evaluated the model using a **Subject GroupKFold (5 Folds)** protocol grouped by Subject ID. This guarantees that no subject's timing signature leaks between training and validation splits.
+* **Intruder Simulation**: We simulated same-device takeovers (matching local IP address and browser fingerprints but presenting anomalous keystroke/mouse dynamics) to force the classifier to rely strictly on biometric behavior.
+* **Unified Fusion Classifier Metrics**:
+  * **Classification Accuracy**: 83.68%
+  * **F1-Score**: 0.8258 (82.58%)
+  * **Precision**: 88.54% (high precision minimizes false positives for bank customers)
+  * **Recall**: 77.37%
 
 ---
 

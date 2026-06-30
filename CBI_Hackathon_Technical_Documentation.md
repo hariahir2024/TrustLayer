@@ -169,13 +169,14 @@ The model returns an anomaly score representing cursor path naturalness.
 
 ### 6.3. XGBoost Fusion Classifier
 To combine keystroke scores, mouse scores, device signatures, network parameters (IP changes), and session activity history, we train a gradient-boosted decision tree ensemble (**XGBoost**). 
-To make the model production-ready, we retrained the fusion pipeline using the **KMT (Keystroke-Mouse-Touch) Behavioral Biometrics Dataset** (containing 1,760 sessions from 88 real-world users).
+To make the model production-ready, we retrained the fusion pipeline using the **CMU Keystroke Dynamics Benchmark** (51 subjects, 400 sessions each) and the **BALABIT Mouse Dynamics Dataset** (legitimate trajectories vs. coordinate-shuffled impostor movements).
+* **Leak-Proof validation (GroupKFold)**: Grouped by subject ID over 5 splits. This eliminates timing signature leakages between cross-validation folds.
 * **Same-Device Takeover Training**: We simulated same-device takeovers (matching user agents and IP blocks but displaying mismatched typing rhythm) in 50% of the threat training samples. This forced the classifier to rely on biometric telemetry instead of solely relying on hardware signature matches.
 * **Generalization Metrics**:
-  * **Accuracy**: 87.97%
-  * **Precision**: 80.96%
-  * **Recall**: 92.97%
-  * **F1 Score**: 86.55%
+  * **Accuracy**: 83.68%
+  * **Precision**: 88.54%
+  * **Recall**: 77.37%
+  * **F1 Score**: 0.8258 (82.58%)
 
 ---
 

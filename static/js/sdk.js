@@ -1,4 +1,4 @@
-﻿/**
+/**
  * TRUSTLAYER — sdk.js
  * Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
  * 
@@ -303,7 +303,9 @@ const TRUSTLAYER = (function() {
                     key_events: keyEvents,
                     mouse_samples: mouseSamples,
                     click_dwell_mean: meanClickDwell,
-                    webdriver_flag: isWebDriver
+                    webdriver_flag: isWebDriver,
+                    timestamp: Date.now(),
+                    nonce: typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2)
                 })
             });
 

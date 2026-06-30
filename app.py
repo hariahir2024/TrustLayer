@@ -49,6 +49,7 @@ from constants import (
     AMBER_HIGH_ALLOWED_ACTIONS, AMBER_HIGH_BLOCKED_ACTIONS,
     AMBER_HIGH_OTP_REQUIRED_ACTIONS,
     LARGE_TRANSFER_THRESHOLD, BLOCKED_TRANSFER_THRESHOLD,
+    TXN_SOFT_LIMIT, TXN_HARD_LIMIT,
     REAUTH_MAX_ATTEMPTS, REAUTH_SCORE_PENALTY, STEPUP_REAUTH_THRESHOLD,
     BOT_SCORE_OVERRIDE, ENROLLMENT_REQUIRED_SAMPLES,
     AMBER_LOW_SCORING_INTERVAL_SEC, DEFAULT_SCORING_INTERVAL_SEC,
@@ -122,13 +123,18 @@ app = FastAPI(
     lifespan    = lifespan,
 )
 
-# Allow all origins for dev/demo
+# Restrict CORS origins for security in production-ready demo
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["*"],
+    allow_origins     = [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8089",
+        "http://127.0.0.1:8089"
+    ],
     allow_credentials = True,
-    allow_methods     = ["*"],
-    allow_headers     = ["*"],
+    allow_methods     = ["GET", "POST", "OPTIONS"],
+    allow_headers     = ["Content-Type", "Authorization"],
 )
 
 # Serve CSS and JS from /static/
@@ -188,8 +194,7 @@ async def register(req: RegisterRequest):
     if db.user_exists(req.username):
         raise HTTPException(400, f"Username '{req.username}' is already registered")
         
-    import hashlib
-    password_hash = hashlib.sha256(req.password.encode()).hexdigest() if req.password else ""
+    password_hash = db.hash_password(req.password) if req.password else ""
     
     user = db.create_user(
         username=req.username,
@@ -228,6 +233,8 @@ class ScoreRequest(BaseModel):
     mouse_samples:    Optional[list]  = []
     click_dwell_mean: Optional[float] = 120.0
     webdriver_flag:   Optional[bool]  = False
+    timestamp:        Optional[float] = None
+    nonce:            str
 
 class ReauthRequest(BaseModel):
     session_id:     str
@@ -295,8 +302,22 @@ async def enroll_mouse(req: MouseEnrollRequest):
 
 
 # =============================================================================
-# LOGIN ENDPOINT
+# LOGIN ENDPOINT & RATE LIMITER
 # =============================================================================
+
+from collections import defaultdict
+
+LOGIN_ATTEMPTS = defaultdict(list)
+_used_nonces = {}
+
+def is_rate_limited(ip: str, limit: int = 5, period: int = 60) -> bool:
+    now = time.time()
+    attempts = [t for t in LOGIN_ATTEMPTS[ip] if now - t < period]
+    LOGIN_ATTEMPTS[ip] = attempts
+    if len(attempts) >= limit:
+        return True
+    LOGIN_ATTEMPTS[ip].append(now)
+    return False
 
 @app.post("/api/login")
 async def login(req: LoginRequest, request: Request):
@@ -307,15 +328,18 @@ async def login(req: LoginRequest, request: Request):
     if not req.username:
         raise HTTPException(400, "username is required")
 
+    # Rate limiting protection
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if is_rate_limited(client_ip, limit=5, period=60):
+        raise HTTPException(429, "Too many login attempts. Please try again in 60 seconds.")
+
     if not db.user_exists(req.username):
         raise HTTPException(400, f"Username '{req.username}' does not exist. Please register.")
 
     user = db.get_user(req.username)
 
     if user.get("password_hash") and (req.password or not req.key_events):
-        import hashlib
-        pwd_hash = hashlib.sha256(req.password.encode()).hexdigest() if req.password else ""
-        if user["password_hash"] != pwd_hash:
+        if not db.verify_password(req.username, req.password):
             raise HTTPException(401, "Invalid password")
 
     # Compute device fingerprint from browser metadata
@@ -414,6 +438,23 @@ async def score(req: ScoreRequest):
     session = db.get_session(req.session_id)
     if not session:
         raise HTTPException(404, "Session not found")
+
+    # Anti-replay telemetry validation
+    if req.timestamp:
+        # Check if timestamp is older than 2 minutes (allowance for clock drift)
+        if abs(time.time() * 1000 - req.timestamp) > 120000:
+            raise HTTPException(400, "Stale telemetry: possible replay attack detected.")
+
+    # Clean up nonces older than 2 minutes
+    now = time.time()
+    expired = [n for n, ts in list(_used_nonces.items()) if now - ts > 120]
+    for n in expired:
+        _used_nonces.pop(n, None)
+
+    if req.nonce:
+        if req.nonce in _used_nonces:
+            raise HTTPException(400, "Replay detected: nonce already used")
+        _used_nonces[req.nonce] = now
 
     # Check IP block first
     blocked, reason = db.is_ip_blocked(session.get("ip_address", ""))
@@ -606,6 +647,72 @@ async def record_action(req: ActionRequest):
 # TRANSACTION ENDPOINT (with Amber High restrictions)
 # =============================================================================
 
+def check_transaction_risk_rules(session: dict, action: str, amount: float) -> dict:
+    """
+    Applies transaction restriction rules based on session risk band.
+    Used by both /api/transaction and /api/upi.
+    """
+    band = session.get("risk_band", "GREEN")
+    status = session.get("status", "")
+    
+    # 1. RED_HIGH or RED_CRITICAL or Terminated session: Block ALL transactions/UPI regardless of amount
+    if band in ("RED_HIGH", "RED_CRITICAL") or status == "terminated":
+        return {
+            "allowed": False,
+            "otp_required": False,
+            "reason": "session_suspended",
+            "message": "Your session has been suspended. Please log in again."
+        }
+        
+    # 2. RED_LOW or worse AND amount >= TXN_HARD_LIMIT (₹10,000): Reject outright
+    if band.startswith("RED") and amount >= TXN_HARD_LIMIT:
+        return {
+            "allowed": False,
+            "otp_required": False,
+            "reason": "elevated_risk",
+            "message": "Transaction blocked due to elevated session risk"
+        }
+        
+    # 3. AMBER_HIGH or worse AND amount >= TXN_SOFT_LIMIT (₹5,000): Require step-up/OTP
+    if (band in ("AMBER_HIGH", "RED_LOW", "RED_HIGH", "RED_CRITICAL")) and amount >= TXN_SOFT_LIMIT:
+        return {
+            "allowed": True,
+            "otp_required": True,
+            "reason": "verification_required",
+            "message": "Additional verification required."
+        }
+        
+    # 4. Standard AMBER_HIGH rules for smaller amounts
+    if band == "AMBER_HIGH":
+        if action in AMBER_HIGH_BLOCKED_ACTIONS:
+            return {
+                "allowed":  False,
+                "otp_required": False,
+                "reason":   "service_unavailable",
+                "message":  "Service temporarily unavailable. Please try again later.",
+            }
+        if action in AMBER_HIGH_OTP_REQUIRED_ACTIONS:
+            return {
+                "allowed":      True,
+                "otp_required": True,
+                "reason":       "verification_required",
+                "message":      "Additional verification required.",
+            }
+        if action == "transfer" and amount >= LARGE_TRANSFER_THRESHOLD:
+            return {
+                "allowed":  False,
+                "otp_required": False,
+                "reason":   "service_unavailable",
+                "message":  "Service temporarily unavailable. Please try again later.",
+            }
+
+    return {
+        "allowed": True,
+        "otp_required": False,
+        "reason": "success",
+        "message": "Transaction processed successfully."
+    }
+
 @app.post("/api/transaction")
 async def transaction(req: TransactionRequest):
     """
@@ -616,56 +723,38 @@ async def transaction(req: TransactionRequest):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    band   = session.get("risk_band", "GREEN")
-    amount = req.amount or 0.0
-    action = req.action_type
-
     db.record_session_action(req.session_id)
-
-    # Apply restrictions at AMBER_HIGH
-    if band == "AMBER_HIGH":
-        if action in AMBER_HIGH_BLOCKED_ACTIONS:
-            return {
-                "allowed":  False,
-                "reason":   "service_unavailable",
-                "message":  "Service temporarily unavailable. Please try again later.",
-                "otp_required": False,
-            }
-        if action in AMBER_HIGH_OTP_REQUIRED_ACTIONS:
-            return {
-                "allowed":      True,
-                "otp_required": True,
-                "message":      "Additional verification required.",
-            }
-        if action == "transfer" and amount >= LARGE_TRANSFER_THRESHOLD:
-            return {
-                "allowed":  False,
-                "reason":   "service_unavailable",
-                "message":  "Service temporarily unavailable. Please try again later.",
-                "otp_required": False,
-            }
-
-    # Block all transactions for frozen sessions
-    if band in ("RED_LOW", "RED_HIGH", "RED_CRITICAL") or session["status"] == "terminated":
+    
+    res = check_transaction_risk_rules(session, req.action_type, req.amount or 0.0)
+    
+    if not res["allowed"]:
         return {
-            "allowed":  False,
-            "reason":   "session_suspended",
-            "message":  "Your session has been suspended. Please log in again.",
+            "allowed": False,
+            "reason": res.get("reason", "service_unavailable"),
+            "message": res.get("message", "Service temporarily unavailable."),
+            "otp_required": False
         }
-
+        
+    if res["otp_required"]:
+        return {
+            "allowed": True,
+            "otp_required": True,
+            "message": res.get("message", "Additional verification required.")
+        }
+        
     db.log_event(
         event_type = "TRANSACTION_ALLOWED",
         session_id = req.session_id,
         username   = session["username"],
-        details    = {"action": action, "amount": amount},
+        details    = {"action": req.action_type, "amount": req.amount},
         risk_score = session["current_risk"],
-        risk_band  = band,
+        risk_band  = session.get("risk_band", "GREEN"),
     )
-
+    
     return {
-        "allowed":      True,
+        "allowed": True,
         "otp_required": False,
-        "message":      "Transaction processed successfully.",
+        "message": "Transaction processed successfully."
     }
 
 
@@ -1116,8 +1205,21 @@ async def upi_payment(req: UPIRequest):
     session = db.get_session(req.session_id)
     if not session:
         raise HTTPException(404, "Session not found")
-    if session["status"] == "terminated":
-        raise HTTPException(403, "Session is frozen")
+
+    # Enforce shared transaction risk rules
+    res = check_transaction_risk_rules(session, "upi", req.amount)
+    if not res["allowed"]:
+        if res["reason"] == "elevated_risk":
+            raise HTTPException(403, "Transaction blocked due to elevated session risk")
+        else:
+            raise HTTPException(403, "Transaction blocked: session is frozen")
+
+    if res["otp_required"]:
+        return {
+            "success": False,
+            "requires_verification": True,
+            "message": "Additional verification required."
+        }
 
     username = session["username"]
     user     = db.get_user(username)
@@ -1270,12 +1372,10 @@ async def change_password(req: ChangePasswordRequest):
     if not user:
         raise HTTPException(404, "User not found")
         
-    import hashlib
-    old_hash = hashlib.sha256(req.old_password.encode()).hexdigest()
-    if user["password_hash"] and user["password_hash"] != old_hash:
+    if user.get("password_hash") and not db.verify_password(username, req.old_password):
         raise HTTPException(400, "Incorrect current password")
         
-    new_hash = hashlib.sha256(req.new_password.encode()).hexdigest()
+    new_hash = db.hash_password(req.new_password)
     
     conn = db._get_conn()
     cursor = conn.cursor()

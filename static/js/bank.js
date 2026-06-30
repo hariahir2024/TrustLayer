@@ -1,4 +1,4 @@
-﻿/**
+/**
  * TRUSTLAYER — bank.js
  * Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
  * 
@@ -172,6 +172,11 @@ document.addEventListener('DOMContentLoaded', function() {
     TRUSTLAYER.monitorInput(inputs.payeeAccount);
     TRUSTLAYER.monitorInput(inputs.payeeIfsc);
     TRUSTLAYER.monitorInput(inputs.payeeLimit);
+    TRUSTLAYER.monitorInput(inputs.upiVpa);
+    TRUSTLAYER.monitorInput(inputs.upiAmount);
+    TRUSTLAYER.monitorInput(inputs.billConsumer);
+    TRUSTLAYER.monitorInput(inputs.billAmount);
+    TRUSTLAYER.monitorInput(inputs.fdAmount);
 
     // Timing helper focus hooks
     inputs.enroll.addEventListener('focus', () => currentFocusFieldTs = Date.now());

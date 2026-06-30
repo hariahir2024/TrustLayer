@@ -97,4 +97,4 @@
 ### Scene 7: Conclusion & Wrap-Up (7:00 - 8:00)
 * **Visual on screen**: Bring the PowerPoint slide outline or the Technical Documentation outline back on screen, showing the F1 metrics.
 * **Voiceover / Speaking Script**:
-  > *"In summary, TRUSTLAYER provides continuous, friction-free protection for online banking sessions. By using real-world KMT biometric training data, we achieved an F1 classification score of 86.55% and generalized takeover protection. This Proof of Concept demonstrates the practical feasibility, technical robustness, and immediate applicability of our solution. Thank you for your time and evaluation."*
+  > *"In summary, TRUSTLAYER provides continuous, friction-free protection for online banking sessions. By using real-world CMU and BALABIT human biometric training data, we achieved a leak-proof F1 classification score of 82.58% and generalized takeover protection. This Proof of Concept demonstrates the practical feasibility, technical robustness, and immediate applicability of our solution. Thank you for your time and evaluation."*

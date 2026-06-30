@@ -999,15 +999,15 @@ document.addEventListener('DOMContentLoaded', function() {
         updateProfileConfidence(evt.session_count);
 
         // Find matching breakdown object
-        const fakeBreakdownObj = {
+        const breakdownPayload = {
             all_contributors: evt.all_contributors || [],
             top_contributors: evt.top_contributors || [],
             mouse_samples: evt.mouse_samples || []
         };
 
-        updateShapBreakdown(fakeBreakdownObj);
-        renderKeystrokeChart(fakeBreakdownObj);
-        drawMouseTrajectory(fakeBreakdownObj);
+        updateShapBreakdown(breakdownPayload);
+        renderKeystrokeChart(breakdownPayload);
+        drawMouseTrajectory(breakdownPayload);
         renderFeatureImportanceChart();
         fetchAndRenderSessionHeartbeatLogs(selectedSessionId);
         renderSessionRiskHeartbeatChart(selectedSessionId, evt.score);

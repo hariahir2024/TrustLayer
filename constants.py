@@ -1,4 +1,4 @@
-﻿# =============================================================================
+# =============================================================================
 # TRUSTLAYER — constants.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
@@ -500,6 +500,8 @@ AMBER_HIGH_BLOCKED_ACTIONS = [
 ]
 LARGE_TRANSFER_THRESHOLD = 1000    # ₹ — transfers above this require OTP at Amber High
 BLOCKED_TRANSFER_THRESHOLD = 10000 # ₹ — transfers above this are blocked at Amber High
+TXN_SOFT_LIMIT = 5000
+TXN_HARD_LIMIT = 10000
 
 
 # -----------------------------------------------------------------------------
@@ -699,6 +701,6 @@ LSTM_ANOMALY_THRESHOLD_DEFAULT = 0.05   # placeholder — real value computed at
 MODEL_DIR              = "models"
 MODEL_KEYSTROKE_PT     = "models/lstm_keystroke_pretrained.pt"
 MODEL_MOUSE_PT         = "models/lstm_mouse_pretrained.pt"
-MODEL_XGBOOST_PKL      = "models/xgboost_fusion.pkl"
+MODEL_XGBOOST_PKL      = "models/xgboost_fusion_intersubject.pkl"
 MODEL_METADATA_JSON    = "models/model_metadata.json"
 

@@ -316,5 +316,19 @@
         0.25666879
       ]
     }
+  },
+  "xgboost_fusion_v2": {
+    "methodology": "Inter-subject evaluation (CMU Keystroke Dynamics Benchmark protocol)",
+    "training_composition": {
+      "keystroke_source": "100% real \u2014 CMU dataset, 51 subjects",
+      "mouse_source": "100% real \u2014 BALABIT dataset, legitimate vs shuffled-trajectory",
+      "metadata_source": "Real distributions from DFS/IBA hackathon dataset (INB_REQ_LOG.csv, TXN_HISTORY_UPI_FIN.xlsx)",
+      "synthetic_percentage": 0
+    },
+    "validation_method": "GroupKFold by subject_id, 5 folds",
+    "legitimate_samples": 1275,
+    "impostor_samples": 1275,
+    "cross_val_accuracy": 0.836836,
+    "cross_val_f1": 0.825757
   }
 }

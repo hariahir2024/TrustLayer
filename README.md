@@ -44,11 +44,11 @@ NetBanking security has historically relied on **point-in-time** checks (e.g., u
 ├── verify_datasets.py        ← Dataset verification test suite
 │
 ├── models/                   ← Pre-trained machine learning classifiers
-│   ├── xgboost_fusion.pkl    ← Retrained XGBoost fusion classifier
-│   └── model_metadata.json   ← Dynamic model evaluation metrics (F1, precision)
+│   ├── xgboost_fusion_intersubject.pkl ← Retrained inter-subject XGBoost fusion classifier
+│   └── model_metadata.json   ← Dynamic model evaluation metrics (F1, precision, accuracy)
 │
 ├── scripts/                  ← Model utility scripts
-│   └── retrain_xgb_with_kmt.py ← Retrain XGBoost fusion using real-world KMT dataset
+│   └── train_xgb_intersubject.py ← Retrain XGBoost fusion using real-world CMU/Balabit datasets
 │
 └── static/                   ← Frontend portal assets
     ├── index.html            ← Project launcher landing page
@@ -116,16 +116,16 @@ python verify_integration.py
 ```
 *This script launches a temporary background server instance on port 8089, simulates telemetry data for the three personas, verifies that the system blocks threats, and prints a success report.*
 
-### 2. Model Retraining (Real KMT Dataset)
-The fusion classifier has been retrained using the **KMT (Keystroke-Mouse-Touch) Behavioral Biometrics Dataset** containing 1,760 sessions from 88 real-world users:
+### 2. Model Retraining (Real CMU + BALABIT Datasets)
+The fusion classifier has been retrained using 100% real human biometrics: the **CMU Keystroke Dynamics Benchmark** (51 subjects) and the **BALABIT Mouse Dynamics Dataset**:
 ```bash
-python scripts/retrain_xgb_with_kmt.py
+python scripts/train_xgb_intersubject.py
 ```
-*Running this script profiles keystroke/mouse parameters, trains the model (`models/xgboost_fusion.pkl`), and outputs model statistics. The model currently achieves:*
-* **Generalization Accuracy**: 87.97%
-* **Precision**: 80.96%
-* **Recall**: 92.97%
-* **F1 Score**: 86.55%
+*Running this script profiles keystroke/mouse parameters, trains the model (`models/xgboost_fusion_intersubject.pkl`), and outputs model statistics. The model achieves:*
+* **GroupKFold Accuracy**: 83.68%
+* **GroupKFold Precision**: 88.54%
+* **GroupKFold Recall**: 77.37%
+* **GroupKFold F1 Score**: 0.8258 (82.58%)
 
 ---
 
