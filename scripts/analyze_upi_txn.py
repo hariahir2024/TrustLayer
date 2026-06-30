@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # =============================================================================
-# BehaviorShield — scripts/analyze_upi_txn.py
+# TRUSTLAYER — scripts/analyze_upi_txn.py
 # Team SOLARIS | Cyber Security Hackathon 2026 — MNNIT Allahabad
 # =============================================================================
 # Analyzes TXN_HISTORY_UPI_FIN.xlsx to extract amount distributions,

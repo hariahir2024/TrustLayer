@@ -1,5 +1,5 @@
-# =============================================================================
-# BehaviorShield — constants.py
+﻿# =============================================================================
+# TRUSTLAYER — constants.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # THIS FILE IS WRITTEN FIRST.
@@ -659,7 +659,7 @@ BALABIT_COLUMNS = {
 # -----------------------------------------------------------------------------
 # SYSTEM INFO
 # -----------------------------------------------------------------------------
-SYSTEM_NAME    = "BehaviorShield"
+SYSTEM_NAME    = "TRUSTLAYER"
 SYSTEM_VERSION = "1.0.0-poc"
 BANK_NAME      = "Bharat Suraksha Bank"
 TEAM_NAME      = "SOLARIS"

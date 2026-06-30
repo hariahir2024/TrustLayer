@@ -1,8 +1,8 @@
-import sys
+﻿import sys
 sys.path.insert(0, '.')
 from constants import *
 
-print("=== BehaviorShield constants.py — Validation Report ===\n")
+print("=== TRUSTLAYER constants.py — Validation Report ===\n")
 
 # Feature count
 print(f"Total features defined: {len(FEATURES)}")

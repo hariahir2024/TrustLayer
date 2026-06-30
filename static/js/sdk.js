@@ -1,5 +1,5 @@
-/**
- * BehaviorShield — sdk.js
+﻿/**
+ * TRUSTLAYER — sdk.js
  * Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
  * 
  * Silent behavioral telemetry collector. Runs on bank.html.
@@ -7,13 +7,13 @@
  * Manages periodic background scoring calls and handles dynamic scoring intervals.
  */
 
-const BehaviorShield = (function() {
+const TRUSTLAYER = (function() {
     // Configuration
     const CONFIG = {
         DEFAULT_INTERVAL_MS: 30000, // 30 seconds (Green)
         AMBER_LOW_INTERVAL_MS: 10000, // 10 seconds (Amber Low)
         API_SCORE_URL: '/api/score',
-        PASSPHRASE_LENGTH: 17
+        PASSPHRASE_LENGTH: 11   // dynamic formula: First4 + Last4 + @ + YY = 11 chars
     };
 
     // State variables
@@ -187,23 +187,43 @@ const BehaviorShield = (function() {
 
         element.addEventListener('focus', function() {
             fieldFocusTimestamp = Date.now();
+            for (const k in activeKeys) delete activeKeys[k];
+            activeKeys._queue = [];
         });
 
         element.addEventListener('keydown', function(e) {
             const now = Date.now();
             let pos = -1;
 
-            if (e.key === 'Backspace') {
+            const isBackspace = (e.key === 'Backspace' || e.keyCode === 8);
+            const ignoredKeys = new Set([
+                'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape', 
+                'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'
+            ]);
+
+            if (isBackspace) {
                 pos = -1;
-            } else if (e.key.length === 1) {
+            } else if (ignoredKeys.has(e.key) || ignoredKeys.has(e.code)) {
+                return; // Ignore control keys
+            } else {
                 // Determine 1-indexed position of where the character will go
                 pos = element.selectionStart + 1;
-            } else {
-                return; // Ignore control keys other than Backspace
             }
 
-            // Store position of active key to pair it on keyup
-            activeKeys[e.code] = pos;
+            // Generate a tracking key
+            let trackingKey = null;
+            if (e.code && e.code !== 'Unidentified') {
+                trackingKey = e.code;
+            } else if (e.key && e.key !== 'Unidentified') {
+                trackingKey = e.key;
+            }
+
+            if (trackingKey) {
+                activeKeys[trackingKey] = pos;
+            } else {
+                if (!activeKeys._queue) activeKeys._queue = [];
+                activeKeys._queue.push(pos);
+            }
 
             keyEventsBuffer.push({
                 timestamp: now,
@@ -217,15 +237,30 @@ const BehaviorShield = (function() {
 
         element.addEventListener('keyup', function(e) {
             const now = Date.now();
-            const pos = activeKeys[e.code];
+            const isBackspace = (e.key === 'Backspace' || e.keyCode === 8);
+            
+            let pos = undefined;
+            let trackingKey = null;
+            if (e.code && e.code !== 'Unidentified') {
+                trackingKey = e.code;
+            } else if (e.key && e.key !== 'Unidentified') {
+                trackingKey = e.key;
+            }
+
+            if (trackingKey && activeKeys[trackingKey] !== undefined) {
+                pos = activeKeys[trackingKey];
+                delete activeKeys[trackingKey];
+            } else if (activeKeys._queue && activeKeys._queue.length > 0) {
+                pos = activeKeys._queue.shift();
+            }
+
             if (pos !== undefined) {
                 keyEventsBuffer.push({
                     timestamp: now,
                     event: 'up',
                     position: pos
                 });
-                delete activeKeys[e.code];
-            } else if (e.key === 'Backspace') {
+            } else if (isBackspace) {
                 keyEventsBuffer.push({
                     timestamp: now,
                     event: 'up',
@@ -273,34 +308,34 @@ const BehaviorShield = (function() {
             });
 
             if (!response.ok) {
-                console.error('BehaviorShield scoring request failed:', response.statusText);
+                console.error('TRUSTLAYER scoring request failed:', response.statusText);
                 return;
             }
 
             const data = await response.json();
             
             // Dispatch result event so page logic can respond
-            const shieldEvent = new CustomEvent('behaviorshield_update', { detail: data });
+            const shieldEvent = new CustomEvent('TRUSTLAYER_update', { detail: data });
             window.dispatchEvent(shieldEvent);
 
             // Handle actions or trigger freezes
             if (data.action === 'FREEZE_SESSION' || data.action === 'FREEZE_AND_ALERT' || data.action === 'SILENT_BLOCK') {
                 stopScoringLoop();
-                window.dispatchEvent(new CustomEvent('behaviorshield_freeze', { detail: data }));
+                window.dispatchEvent(new CustomEvent('TRUSTLAYER_freeze', { detail: data }));
             } else if (data.action === 'SOFT_CHALLENGE' || data.action === 'FULL_CHALLENGE') {
-                window.dispatchEvent(new CustomEvent('behaviorshield_challenge', { detail: data }));
+                window.dispatchEvent(new CustomEvent('TRUSTLAYER_challenge', { detail: data }));
             }
 
             // Dynamically adjust polling interval
             const serverIntervalMs = (data.scoring_interval || 30) * 1000;
             if (serverIntervalMs !== currentIntervalMs) {
-                console.log(`[BehaviorShield] Interval adjusted to ${serverIntervalMs / 1000}s`);
+                console.log(`[TRUSTLAYER] Interval adjusted to ${serverIntervalMs / 1000}s`);
                 currentIntervalMs = serverIntervalMs;
                 restartScoringLoop();
             }
 
         } catch (err) {
-            console.error('BehaviorShield error in scoring cycle:', err);
+            console.error('TRUSTLAYER error in scoring cycle:', err);
         }
     }
 
@@ -342,7 +377,7 @@ const BehaviorShield = (function() {
             startGlobalMouseCapture();
             startScoringLoop();
             
-            console.log(`[BehaviorShield] Telemetry SDK initialized for session: ${sid}`);
+            console.log(`[TRUSTLAYER] Telemetry SDK initialized for session: ${sid}`);
         },
 
         /**
@@ -387,10 +422,10 @@ const BehaviorShield = (function() {
             sessionId = null;
             username = null;
             targetInputElements.clear();
-            console.log('[BehaviorShield] Telemetry SDK stopped and cleaned up.');
+            console.log('[TRUSTLAYER] Telemetry SDK stopped and cleaned up.');
         }
     };
 })();
 
 // Export global variable
-window.BehaviorShield = BehaviorShield;
+window.TRUSTLAYER = TRUSTLAYER;

@@ -1,9 +1,9 @@
-/**
- * BehaviorShield — bank.js
+﻿/**
+ * TRUSTLAYER — bank.js
  * Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
  * 
  * Redesigned client-side portal logic for Bharat Suraksha Bank NetBanking.
- * Integrates with BehaviorShield Telemetry SDK (sdk.js) to monitor sessions.
+ * Integrates with TRUSTLAYER Telemetry SDK (sdk.js) to monitor sessions.
  * Manages multi-tab routing, persistent local storage databases,
  * payee registration, transfers, statement searches, and timing presets.
  */
@@ -148,10 +148,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // State
     let currentUsername = "";
-    let userPassphrase = "SecureAuth@India1";
+    let userPassphrase = "";   // fetched from server after login/registration
     let sessionId = null;
     let enrollmentSamplesCollected = 0;
     let isMouseCalibrated = false;
+    let traceCoords = [];
     let selectedPersona = "owner"; 
     let currentTransactionPayload = null;
     let currentFocusFieldTs = null;
@@ -162,20 +163,44 @@ document.addEventListener('DOMContentLoaded', function() {
     let userSavingsBalance = 423891.50;
 
     // Monitor input elements with SDK
-    BehaviorShield.monitorInput(inputs.enroll);
-    BehaviorShield.monitorInput(inputs.loginPass);
-    BehaviorShield.monitorInput(inputs.challenge);
-    BehaviorShield.monitorInput(inputs.txAmount);
-    BehaviorShield.monitorInput(inputs.txDesc);
-    BehaviorShield.monitorInput(inputs.payeeName);
-    BehaviorShield.monitorInput(inputs.payeeAccount);
-    BehaviorShield.monitorInput(inputs.payeeIfsc);
-    BehaviorShield.monitorInput(inputs.payeeLimit);
+    TRUSTLAYER.monitorInput(inputs.enroll);
+    TRUSTLAYER.monitorInput(inputs.loginPass);
+    TRUSTLAYER.monitorInput(inputs.challenge);
+    TRUSTLAYER.monitorInput(inputs.txAmount);
+    TRUSTLAYER.monitorInput(inputs.txDesc);
+    TRUSTLAYER.monitorInput(inputs.payeeName);
+    TRUSTLAYER.monitorInput(inputs.payeeAccount);
+    TRUSTLAYER.monitorInput(inputs.payeeIfsc);
+    TRUSTLAYER.monitorInput(inputs.payeeLimit);
 
     // Timing helper focus hooks
     inputs.enroll.addEventListener('focus', () => currentFocusFieldTs = Date.now());
     inputs.loginPass.addEventListener('focus', () => currentFocusFieldTs = Date.now());
     inputs.challenge.addEventListener('focus', () => currentFocusFieldTs = Date.now());
+
+    // Mobile menu toggle handlers
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('open');
+            }
+        });
+    }
+
+    // Close sidebar if clicking outside it on mobile
+    document.addEventListener('click', function(e) {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar && sidebar.classList.contains('open')) {
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            const isClickInside = sidebar.contains(e.target) || (mobileMenuBtn && mobileMenuBtn.contains(e.target));
+            if (!isClickInside) {
+                sidebar.classList.remove('open');
+            }
+        }
+    });
 
     // ==========================================
     // VIEW TRANSITIONS
@@ -188,6 +213,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 views[key].classList.add('hidden');
             }
         });
+
+        if (viewName === 'username') {
+            inputs.username.value = "";
+            inputs.startPass.value = "";
+            inputs.loginPass.value = "";
+            const readonlyUser = document.getElementById('login-username-readonly');
+            if (readonlyUser) readonlyUser.value = "";
+        }
 
         if (viewName === 'portal') {
             authContainer.classList.add('hidden');
@@ -220,6 +253,12 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('upi-my-vpa').textContent = `${currentUsername}@bsb`;
         } else if (tabName === 'fd') {
             updateFdCalculation();
+        }
+
+        // Close mobile navigation sidebar when selecting a tab
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('open');
         }
     };
 
@@ -412,7 +451,15 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     // USERNAME GATE / VERIFY ENROLLMENT
     // ==========================================
-    buttons.nextStep.addEventListener('click', async function() {
+    const usernameForm = document.getElementById('username-form');
+    if (usernameForm) {
+        usernameForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            handleUsernameSubmit();
+        });
+    }
+
+    async function handleUsernameSubmit() {
         const username = inputs.username.value.trim();
         const password = inputs.startPass.value;
         if (!username || !password) {
@@ -430,7 +477,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     username: currentUsername,
                     password: password,
                     key_events: [],
-                    device_info: BehaviorShield.getDeviceFingerprint()
+                    device_info: TRUSTLAYER.getDeviceFingerprint()
                 })
             });
 
@@ -441,11 +488,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             const data = await response.json();
-            BehaviorShield.destroy();
+            TRUSTLAYER.destroy();
 
-            if (data.passphrase) {
-                userPassphrase = data.passphrase;
-            }
+            userPassphrase = data.passphrase;
 
             if (data.enrolled) {
                 document.getElementById('login-username-readonly').value = currentUsername;
@@ -460,7 +505,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error("Error logging in:", err);
             alert("Connection error. Is app.py running?");
         }
-    });
+    }
 
     // Registration UI Navigation
     buttons.showRegister.addEventListener('click', function(e) {
@@ -507,7 +552,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     email: email,
                     mobile: mobile,
                     city: city,
-                    date_of_birth: dob
+                    date_of_birth: dob,
+                    account_type: (document.getElementById('reg-account-type') || {}).value || 'savings',
                 })
             });
 
@@ -519,10 +565,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const data = await response.json();
             currentUsername = data.username;
+            // Set the per-user passphrase from the registration response
+            if (data.passphrase) userPassphrase = data.passphrase;
 
             // Display account created card details
             displays.createdAccount.textContent = data.account_number;
-            displays.createdPassphrase.textContent = data.passphrase;
+            displays.createdPassphrase.textContent = data.passphrase || '-';
             showView('created');
 
             // Clear registration inputs
@@ -540,12 +588,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    inputs.username.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            buttons.nextStep.click();
-        }
-    });
+    // Form submission is handled natively via form submit event
 
     // ==========================================
     // ENROLLMENT PROGRESS & MOUSE CALIBRATION
@@ -574,51 +617,68 @@ document.addEventListener('DOMContentLoaded', function() {
         if (tracePath) tracePath.setAttribute('d', '');
     }
 
-    inputs.enroll.addEventListener('keydown', async function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            const text = inputs.enroll.value.trim();
-            const targetPass = document.getElementById('enroll-passphrase-display').textContent.trim();
-            if (text !== targetPass) {
-                alert(`Passphrase does not match exactly! Please type: ${targetPass}`);
+    async function submitEnrollmentSample() {
+        const text = inputs.enroll.value.trim();
+        const targetPass = document.getElementById('enroll-passphrase-display').textContent.trim();
+        if (text !== targetPass) {
+            alert(`Passphrase does not match exactly! Please type: ${targetPass}`);
+            inputs.enroll.value = "";
+            TRUSTLAYER.extractKeyEvents(); 
+            return;
+        }
+
+        const keyEvents = TRUSTLAYER.extractKeyEvents();
+        if (!keyEvents || keyEvents.length === 0) {
+            alert("No typing dynamics recorded. Please type the passphrase character-by-character.");
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/enroll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: currentUsername,
+                    key_events: keyEvents,
+                    field_focus_ts: currentFocusFieldTs,
+                    device_class: TRUSTLAYER.getDeviceFingerprint().device_class
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                alert(data.detail || "Failed to submit sample. Please re-type it naturally.");
                 inputs.enroll.value = "";
-                BehaviorShield.extractKeyEvents(); 
                 return;
             }
 
-            const keyEvents = BehaviorShield.extractKeyEvents();
+            enrollmentSamplesCollected = data.count;
 
-            try {
-                const response = await fetch('/api/enroll', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        username: currentUsername,
-                        key_events: keyEvents,
-                        field_focus_ts: currentFocusFieldTs,
-                        device_class: BehaviorShield.getDeviceFingerprint().device_class
-                    })
-                });
+            displays.enrollProgressText.textContent = `Sample ${enrollmentSamplesCollected}/5`;
+            displays.enrollProgressBar.style.width = `${(enrollmentSamplesCollected / 5) * 100}%`;
+            inputs.enroll.value = "";
+            currentFocusFieldTs = Date.now();
 
-                const data = await response.json();
-                enrollmentSamplesCollected = data.count;
-
-                displays.enrollProgressText.textContent = `Sample ${enrollmentSamplesCollected}/5`;
-                displays.enrollProgressBar.style.width = `${(enrollmentSamplesCollected / 5) * 100}%`;
-                inputs.enroll.value = "";
-                currentFocusFieldTs = Date.now();
-
-                if (data.complete) {
-                    inputs.enroll.disabled = true;
-                    document.getElementById('enroll-mouse-step').classList.remove('hidden');
-                    initializeMouseCalibration();
-                }
-            } catch (err) {
-                console.error("Enrollment failed:", err);
-                alert("Failed to submit sample.");
+            if (data.complete) {
+                inputs.enroll.disabled = true;
+                const enrollSubmitBtn = document.getElementById('enroll-submit-btn');
+                if (enrollSubmitBtn) enrollSubmitBtn.disabled = true;
+                document.getElementById('enroll-mouse-step').classList.remove('hidden');
+                initializeMouseCalibration();
             }
+        } catch (err) {
+            console.error("Enrollment failed:", err);
+            alert("Failed to submit sample.");
         }
-    });
+    }
+
+    const enrollForm = document.getElementById('enroll-form');
+    if (enrollForm) {
+        enrollForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await submitEnrollmentSample();
+        });
+    }
 
     buttons.enrollCancel.addEventListener('click', () => showView('username'));
 
@@ -630,8 +690,27 @@ document.addEventListener('DOMContentLoaded', function() {
         const tracePath = document.getElementById('dynamic-trace-path');
         
         let isTracing = false;
-        let traceCoords = [];
+        traceCoords = [];
         const pathLength = path.getTotalLength();
+
+        function getZigzagY(x) {
+            if (x <= 40) return 75;
+            if (x >= 520) return 75;
+            if (x >= 40 && x < 120) {
+                return 75 - 0.625 * (x - 40);
+            } else if (x >= 120 && x < 200) {
+                return 25 + 1.25 * (x - 120);
+            } else if (x >= 200 && x < 280) {
+                return 125 - 1.25 * (x - 200);
+            } else if (x >= 280 && x < 360) {
+                return 25 + 1.25 * (x - 280);
+            } else if (x >= 360 && x < 440) {
+                return 125 - 1.25 * (x - 360);
+            } else if (x >= 440 && x <= 520) {
+                return 25 + 0.625 * (x - 440);
+            }
+            return 75;
+        }
 
         // Ensure start state is visual
         ball.setAttribute('cx', '40');
@@ -641,14 +720,14 @@ document.addEventListener('DOMContentLoaded', function() {
         label.textContent = "Move cursor to START to begin tracing";
         if (tracePath) tracePath.setAttribute('d', '');
 
-        area.addEventListener('mousemove', function(e) {
+        function handleInteraction(clientX, clientY) {
             if (isMouseCalibrated) return;
             
             const rect = area.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            const mouseX = clientX - rect.left;
+            const mouseY = clientY - rect.top;
             
-            // Map mouse coordinates to SVG viewBox (0 0 560 150)
+            // Map coordinates to SVG viewBox (0 0 560 150)
             const svgX = (mouseX / rect.width) * 560;
             const svgY = (mouseY / rect.height) * 150;
 
@@ -665,17 +744,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("[BSB] Tracing started");
                 }
             } else {
-                // Project cursor onto the S-curve
+                // Project cursor onto the zigzag path mathematically
                 // Path goes horizontally from X=40 to X=520
                 const clampedX = Math.max(40, Math.min(520, svgX));
-                const t = (clampedX - 40) / 480; // normalized [0, 1]
-                
-                // Get SVG path coordinate at length
-                const point = path.getPointAtLength(t * pathLength);
+                const targetY = getZigzagY(clampedX);
                 
                 // Move the ball along the path
-                ball.setAttribute('cx', point.x);
-                ball.setAttribute('cy', point.y);
+                ball.setAttribute('cx', clampedX.toFixed(1));
+                ball.setAttribute('cy', targetY.toFixed(1));
 
                 // Add trail coordinates
                 traceCoords.push({x: svgX, y: svgY});
@@ -683,7 +759,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (tracePath) tracePath.setAttribute('d', dStr);
 
                 // Optional security check: if cursor goes way too far from the ball (e.g. > 70px), we reset
-                const distToBall = Math.sqrt((svgX - point.x) ** 2 + (svgY - point.y) ** 2);
+                const distToBall = Math.sqrt((svgX - clampedX) ** 2 + (svgY - targetY) ** 2);
                 if (distToBall > 70) {
                     isTracing = false;
                     traceCoords = [];
@@ -712,10 +788,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     console.log("[BSB] Mouse calibration complete.");
                 }
             }
-        });
+        }
 
-        area.addEventListener('mouseleave', function() {
+        function handleLeave() {
             if (!isMouseCalibrated) {
+                // If we were tracing and got close to the end, count it as success on release/leave
+                const ballX = parseFloat(ball.getAttribute('cx'));
+                if (isTracing && ballX >= 480) {
+                    isTracing = false;
+                    isMouseCalibrated = true;
+                    ball.setAttribute('cx', '520');
+                    ball.setAttribute('cy', '75');
+                    ball.setAttribute('fill', 'var(--green)');
+                    ball.setAttribute('r', '10');
+                    label.textContent = "Mouse path verified!";
+                    
+                    displays.calibrationSuccess.classList.remove('hidden');
+                    buttons.enrollComplete.disabled = false;
+                    console.log("[BSB] Mouse calibration complete via close-enough end touch.");
+                    return;
+                }
+
                 isTracing = false;
                 traceCoords = [];
                 if (tracePath) tracePath.setAttribute('d', '');
@@ -724,14 +817,61 @@ document.addEventListener('DOMContentLoaded', function() {
                 ball.setAttribute('fill', 'var(--cyan)');
                 ball.setAttribute('r', '10');
                 label.textContent = "Move cursor to START to begin tracing";
-                console.log("[BSB] Tracing reset on mouseleave");
+                console.log("[BSB] Tracing reset");
             }
+        }
+
+        area.addEventListener('mousemove', function(e) {
+            handleInteraction(e.clientX, e.clientY);
         });
+
+        area.addEventListener('touchmove', function(e) {
+            if (e.touches && e.touches.length > 0) {
+                // Prevent scrolling while tracing
+                e.preventDefault();
+                const touch = e.touches[0];
+                handleInteraction(touch.clientX, touch.clientY);
+            }
+        }, { passive: false });
+
+        area.addEventListener('touchstart', function(e) {
+            if (e.touches && e.touches.length > 0) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                handleInteraction(touch.clientX, touch.clientY);
+            }
+        }, { passive: false });
+
+        area.addEventListener('mouseleave', handleLeave);
+        area.addEventListener('touchend', handleLeave);
     }
 
-    buttons.enrollComplete.addEventListener('click', function() {
-        alert("Enrollment baseline registered successfully!");
-        showView('username');
+    buttons.enrollComplete.addEventListener('click', async function() {
+        // Convert traceCoords to SDK-format mouse_events with timestamps
+        const now = Date.now();
+        const mouseEvents = traceCoords.map((pt, i) => ({
+            event: 'move',
+            x: Math.round(pt.x),
+            y: Math.round(pt.y),
+            timestamp: now - (traceCoords.length - i) * 50  // ~50ms intervals
+        }));
+
+        if (mouseEvents.length >= 5) {
+            try {
+                await fetch('/api/enroll-mouse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUsername, mouse_events: mouseEvents })
+                });
+            } catch (e) {
+                console.warn('[BSB] Mouse enroll API failed (non-critical):', e);
+            }
+        }
+
+        // Show success and proceed
+        const successDiv = document.getElementById('calibration-success-msg');
+        if (successDiv) successDiv.textContent = '✓ Biometric profile registered. Redirecting to login...';
+        setTimeout(() => showView('username'), 1200);
     });
 
     // ==========================================
@@ -739,13 +879,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     buttons.loginBack.addEventListener('click', () => showView('username'));
 
-    buttons.loginSubmit.addEventListener('click', handleLogin);
-    inputs.loginPass.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+    const loginForm = document.getElementById('login-form');
+    if (loginForm) {
+        loginForm.addEventListener('submit', function(e) {
             e.preventDefault();
             handleLogin();
-        }
-    });
+        });
+    }
 
     async function handleLogin() {
         const pass = inputs.loginPass.value.trim();
@@ -757,12 +897,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (pass !== userPassphrase) {
             alert("Invalid credentials. Enter the enrolled passphrase.");
             inputs.loginPass.value = "";
-            BehaviorShield.extractKeyEvents(); 
+            TRUSTLAYER.extractKeyEvents(); 
             return;
         }
 
-        const keyEvents = BehaviorShield.extractKeyEvents();
-        const deviceFingerprint = BehaviorShield.getDeviceFingerprint();
+        const keyEvents = TRUSTLAYER.extractKeyEvents();
+        const deviceFingerprint = TRUSTLAYER.getDeviceFingerprint();
 
         try {
             const response = await fetch('/api/login', {
@@ -795,7 +935,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             loadUserDatabase();
             
-            BehaviorShield.init(sessionId, currentUsername);
+            TRUSTLAYER.init(sessionId, currentUsername);
             updateRiskMetrics(data.score, data.band, 30);
             
             showView('portal');
@@ -808,7 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     buttons.logout.addEventListener('click', function() {
-        BehaviorShield.destroy();
+        TRUSTLAYER.destroy();
         sessionId = null;
         currentUsername = "";
         inputs.username.value = "";
@@ -845,7 +985,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger manual telemetry scoring check
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
@@ -871,18 +1011,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     // SCORING LISTENERS (FROM SDK)
     // ==========================================
-    window.addEventListener('behaviorshield_update', function(e) {
+    window.addEventListener('TRUSTLAYER_update', function(e) {
         const data = e.detail;
         console.log("[BSB] Score updated:", data);
         updateRiskMetrics(data.score, data.band, data.scoring_interval);
     });
 
-    window.addEventListener('behaviorshield_freeze', function(e) {
+    window.addEventListener('TRUSTLAYER_freeze', function(e) {
         console.warn("[BSB] Session Frozen event received!");
         showFreezeOverlay();
     });
 
-    window.addEventListener('behaviorshield_challenge', function(e) {
+    window.addEventListener('TRUSTLAYER_challenge', function(e) {
         console.warn("[BSB] Step-up challenge requested!");
         showChallengeModal();
     });
@@ -925,7 +1065,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ==========================================
     function showFreezeOverlay() {
         overlays.freeze.classList.remove('hidden');
-        BehaviorShield.destroy();
+        TRUSTLAYER.destroy();
     }
 
     buttons.freezeReset.addEventListener('click', function() {
@@ -937,6 +1077,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function showChallengeModal() {
+        const displayEl = document.getElementById('challenge-passphrase-display');
+        if (displayEl) {
+            displayEl.textContent = userPassphrase || "";
+        }
         overlays.challenge.classList.remove('hidden');
         inputs.challenge.value = "";
         displays.challengeError.classList.add('hidden');
@@ -944,13 +1088,13 @@ document.addEventListener('DOMContentLoaded', function() {
         currentFocusFieldTs = Date.now();
     }
 
-    buttons.challengeSubmit.addEventListener('click', submitChallenge);
-    inputs.challenge.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+    const challengeForm = document.getElementById('challenge-form');
+    if (challengeForm) {
+        challengeForm.addEventListener('submit', function(e) {
             e.preventDefault();
             submitChallenge();
-        }
-    });
+        });
+    }
 
     async function submitChallenge() {
         const text = inputs.challenge.value.trim();
@@ -958,11 +1102,11 @@ document.addEventListener('DOMContentLoaded', function() {
             displays.challengeError.textContent = "Passphrase does not match exactly!";
             displays.challengeError.classList.remove('hidden');
             inputs.challenge.value = "";
-            BehaviorShield.extractKeyEvents(); 
+            TRUSTLAYER.extractKeyEvents(); 
             return;
         }
 
-        const keyEvents = BehaviorShield.extractKeyEvents();
+        const keyEvents = TRUSTLAYER.extractKeyEvents();
 
         try {
             const response = await fetch('/api/reauth', {
@@ -1040,7 +1184,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger manual telemetry submit
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Proceed to transfer API check
         sendTransactionRequest();
@@ -1080,13 +1224,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     buttons.otpCancel.addEventListener('click', () => overlays.otp.classList.add('hidden'));
 
-    buttons.otpSubmit.addEventListener('click', submitOtp);
-    inputs.otp.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+    const otpForm = document.getElementById('otp-form');
+    if (otpForm) {
+        otpForm.addEventListener('submit', function(e) {
             e.preventDefault();
             submitOtp();
-        }
-    });
+        });
+    }
 
     function submitOtp() {
         const code = inputs.otp.value.trim();
@@ -1173,7 +1317,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger telemetry submission
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
@@ -1245,7 +1389,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger telemetry submission
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
@@ -1333,7 +1477,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger telemetry submission
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
@@ -1395,7 +1539,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger telemetry submission
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
@@ -1450,7 +1594,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Trigger telemetry submission
-        await BehaviorShield.forceSubmitScore();
+        await TRUSTLAYER.forceSubmitScore();
 
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
@@ -1532,21 +1676,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
     window.loadUserAuditLog = async function() {
         try {
-            const res = await fetch(`/api/user/${currentUsername}/security-log?limit=5`);
+            // Try the new endpoint first, fall back to old one
+            let res = await fetch(`/api/security-events/${currentUsername}?limit=10`);
+            if (!res.ok) res = await fetch(`/api/user/${currentUsername}/security-log?limit=10`);
             if (res.ok) {
                 const data = await res.json();
+                const events = data.events || [];
                 const tbody = document.getElementById('profile-audit-table-body');
                 tbody.innerHTML = '';
-                if (data.events && data.events.length > 0) {
-                    data.events.forEach(evt => {
-                        const dateStr = new Date(evt.timestamp * 1000).toLocaleString();
-                        const score = evt.risk_score !== null ? evt.risk_score.toFixed(1) : '-';
+                if (events.length > 0) {
+                    events.forEach(evt => {
+                        const ts = evt.timestamp || evt.created_at || 0;
+                        const dateStr = ts ? new Date(ts * 1000).toLocaleString() : '-';
+                        const score = evt.risk_score != null ? Number(evt.risk_score).toFixed(1) : '-';
+                        const statusText = evt.status || evt.event_type || 'SCORE_UPDATE';
                         const row = document.createElement('tr');
                         
                         let badgeClass = 'badge-green';
-                        if (evt.status.includes('FAIL') || evt.status.includes('FROZEN') || evt.status.includes('BLOCKED')) {
+                        if (statusText.includes('FAIL') || statusText.includes('FROZEN') || statusText.includes('BLOCKED') || statusText.includes('BOT')) {
                             badgeClass = 'badge-red';
-                        } else if (evt.status.includes('AMBER') || evt.status.includes('CHALLENGE')) {
+                        } else if (statusText.includes('AMBER') || statusText.includes('CHALLENGE') || statusText.includes('REAUTH')) {
                             badgeClass = 'badge-amber';
                         }
                         
@@ -1555,12 +1704,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <td class="text-mono">${evt.device_class || 'DESKTOP'}</td>
                             <td class="text-mono">${evt.ip_address || '-'}</td>
                             <td class="fw-600">${score}</td>
-                            <td><span class="badge ${badgeClass}">${evt.status}</span></td>
+                            <td><span class="badge ${badgeClass}">${statusText}</span></td>
                         `;
                         tbody.appendChild(row);
                     });
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No security events found.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No security events recorded yet.</td></tr>';
                 }
             }
         } catch (e) {
@@ -1644,7 +1793,7 @@ document.addEventListener('DOMContentLoaded', function() {
         inputElement.focus();
         currentFocusFieldTs = Date.now();
 
-        BehaviorShield.extractKeyEvents();
+        TRUSTLAYER.extractKeyEvents();
 
         const hud = document.getElementById('sim-telemetry-hud');
         const speedEl = document.getElementById('sim-key-speed');

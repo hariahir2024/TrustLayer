@@ -11,8 +11,8 @@ print("=" * 55)
 
 # 1. CMU Keystroke Dataset
 print("\n[CMU] CMU Keystroke Benchmark")
-print("-" * 40)
-cmu_path = r"C:\hackathon\cbi hackathon\datasets\cmu_keystroke_benchmark.csv"
+base_dir = os.path.dirname(os.path.abspath(__file__))
+cmu_path = os.path.join(base_dir, "datasets", "cmu_keystroke_benchmark.csv")
 df_cmu = pd.read_csv(cmu_path)
 print(f"  Shape         : {df_cmu.shape[0]} rows × {df_cmu.shape[1]} columns")
 print(f"  Subjects      : {df_cmu['subject'].nunique()} unique users")
@@ -31,7 +31,7 @@ print(f"  OK - CMU dataset looks correct")
 # -- 2. BALABIT Mouse Dataset ------------------------------
 print("\n[BALABIT] BALABIT Mouse Dynamics")
 print("-" * 40)
-balabit_base = r"C:\hackathon\cbi hackathon\datasets\balabit"
+balabit_base = os.path.join(base_dir, "datasets", "balabit")
 
 # Count users and sessions
 training_path = os.path.join(balabit_base, "training_files")

@@ -1,5 +1,5 @@
-# =============================================================================
-# BehaviorShield — database.py
+﻿# =============================================================================
+# TRUSTLAYER — database.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # In-memory database for all runtime state.

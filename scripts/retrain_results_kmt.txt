@@ -1,0 +1,13 @@
+﻿TRUSTLAYER KMT Retraining Report
+============================================================
+Accuracy  : 86.87%
+Precision : 79.41%
+Recall    : 92.40%
+F1 Score  : 85.41%
+Real Samples: 1320
+Synthetic Samples: 5000
+Feature Importances:
+  keystroke_score: 45.36%
+  mouse_score: 20.85%
+  metadata_score: 24.98%
+  is_enrolled: 8.81%

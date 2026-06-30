@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # =============================================================================
-# BehaviorShield — scripts/analyze_inb_logs.py
+# TRUSTLAYER — scripts/analyze_inb_logs.py
 # Team SOLARIS | Cyber Security Hackathon 2026 — MNNIT Allahabad
 # =============================================================================
 # Analyzes INB_REQ_LOG.csv to extract request transition times (deltas)

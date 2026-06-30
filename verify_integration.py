@@ -17,15 +17,17 @@ BASE_URL = f"http://127.0.0.1:{PORT}"
 def run_server():
     """Start the FastAPI app in a background subprocess."""
     env = os.environ.copy()
+    env["TRUSTLAYER_TEST_MODE"] = "1"
     # Prefer virtual environment python if it exists
     python_exe = sys.executable
-    venv_python = os.path.join("C:\\hackathon\\cbi hackathon", "venv", "Scripts", "python.exe")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    venv_python = os.path.join(base_dir, "venv", "Scripts", "python.exe")
     if os.path.exists(venv_python):
         python_exe = venv_python
     
     print(f"Launching FastAPI server on port {PORT} using {python_exe}...")
     cmd = [python_exe, "-m", "uvicorn", "app:app", "--host", "127.0.0.1", "--port", str(PORT)]
-    p = subprocess.Popen(cmd, cwd="C:\\hackathon\\cbi hackathon", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, cwd=base_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return p
 
 def post_json(endpoint, data):

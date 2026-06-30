@@ -1,5 +1,5 @@
-"""
-BehaviorShield — Demo Seed Script (Stream 6E)
+﻿"""
+TRUSTLAYER — Demo Seed Script (Stream 6E)
 Team SOLARIS | CBI Hackathon 2026
 
 Pre-populates the SQLite database with realistic demo accounts so the
@@ -268,13 +268,54 @@ def seed_intruder_sessions() -> None:
             session_id = f"demo_intruder_session_{i+1:02d}"
             ts = time.time() - (10 * 86400) - (i * 3600)  # 10 days ago
 
+            if i == 0:
+                history = [
+                    {"timestamp": ts - 900, "score": 0.1, "band": "GREEN"},
+                    {"timestamp": ts - 600, "score": 35.0, "band": "AMBER_LOW"},
+                    {"timestamp": ts - 300, "score": 52.0, "band": "AMBER_MID"},
+                    {"timestamp": ts, "score": 72.0, "band": "AMBER_HIGH"}
+                ]
+                breakdown = {
+                    "top_contributors": [
+                        {"feature": "mean_flight_time", "label": "Mean gap between consecutive keys", "observed": 170.0, "baseline_mean": 115.0, "z_score": 4.8, "contribution": 35.0, "unit": "ms"},
+                        {"feature": "mouse_mean_velocity", "label": "Average cursor speed", "observed": 0.06, "contribution": 25.0, "unit": "px/ms"}
+                    ],
+                    "all_contributors": [
+                        {"feature": "mean_flight_time", "observed": 170.0, "baseline_mean": 115.0, "contribution": 35.0},
+                        {"feature": "mouse_mean_velocity", "observed": 0.06, "contribution": 25.0},
+                        {"feature": "mean_hold_time", "observed": 95.0, "baseline_mean": 92.0, "contribution": 12.0}
+                    ],
+                    "mouse_samples": [
+                        {"x": 120, "y": 340}, {"x": 220, "y": 345}, {"x": 350, "y": 360}, {"x": 480, "y": 380}
+                    ]
+                }
+            else:
+                history = [
+                    {"timestamp": ts - 600, "score": 0.1, "band": "GREEN"},
+                    {"timestamp": ts - 300, "score": 40.0, "band": "AMBER_LOW"},
+                    {"timestamp": ts, "score": 68.0, "band": "AMBER_HIGH"}
+                ]
+                breakdown = {
+                    "top_contributors": [
+                        {"feature": "mean_hold_time", "label": "Mean key hold duration", "observed": 140.0, "baseline_mean": 92.0, "z_score": 5.2, "contribution": 45.0, "unit": "ms"},
+                        {"feature": "device_match", "label": "Device fingerprint match", "observed": 0.0, "contribution": 23.0, "unit": "match"}
+                    ],
+                    "all_contributors": [
+                        {"feature": "mean_hold_time", "observed": 140.0, "baseline_mean": 92.0, "contribution": 45.0},
+                        {"feature": "device_match", "observed": 0.0, "contribution": 23.0}
+                    ],
+                    "mouse_samples": [
+                        {"x": 100, "y": 100}, {"x": 150, "y": 120}, {"x": 210, "y": 140}, {"x": 280, "y": 170}
+                    ]
+                }
+
             conn.execute("""
                 INSERT OR IGNORE INTO sessions
                     (session_id, username, device_class, ip_address,
-                     current_risk, risk_band, is_intruder, created_at)
-                VALUES (?,?,?,?,?,?,1,?)
+                     current_risk, risk_band, is_intruder, created_at, risk_history, last_breakdown)
+                VALUES (?,?,?,?,?,?,1,?,?,?)
             """, (session_id, "demo_owner", "DESKTOP", "192.168.1.200",
-                  score, "AMBER_HIGH", ts))
+                  score, "AMBER_HIGH", ts, json.dumps(history), json.dumps(breakdown)))
 
             conn.execute("""
                 INSERT INTO security_events
@@ -296,12 +337,12 @@ def seed_intruder_sessions() -> None:
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="BehaviorShield Demo Data Seeder")
+    parser = argparse.ArgumentParser(description="TRUSTLAYER Demo Data Seeder")
     parser.add_argument("--reset", action="store_true",
                         help="Wipe all existing data before seeding (DESTRUCTIVE)")
     args = parser.parse_args()
 
-    log.info("BehaviorShield Demo Seeder")
+    log.info("TRUSTLAYER Demo Seeder")
     log.info("=" * 50)
 
     db.init_db()

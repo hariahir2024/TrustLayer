@@ -1,5 +1,5 @@
-# =============================================================================
-# BehaviorShield — ml_engine.py
+﻿# =============================================================================
+# TRUSTLAYER — ml_engine.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # Contains:
@@ -674,6 +674,11 @@ def extract_mouse_features(mouse_samples: list, session_duration_ms: float) -> d
     }
 
 
+def extract_mouse_features_public(mouse_samples: list, session_duration_ms: float = 3000) -> dict:
+    """Public accessor for mouse feature extraction (used by enrollment endpoint)."""
+    return extract_mouse_features(mouse_samples, session_duration_ms)
+
+
 def extract_metadata_features(session: dict, device_fp_enrolled: str | None) -> dict:
     """
     Extract session metadata features from session state.
@@ -1169,6 +1174,73 @@ def score_keystrokes(username: str, features: dict, key_events: list = None) -> 
     stds  = baseline.get("stds", {})
 
     if not means:
+        if _generic_keystroke_lstm is not None and key_events:
+            try:
+                seq = _extract_keystroke_sequence(key_events)
+                if seq is not None and _ml_metadata is not None and "keystroke_model" in _ml_metadata:
+                    norm = _ml_metadata["keystroke_model"]["normalization"]
+                    h_mean, h_std = norm["hold_mean"], norm["hold_std"]
+                    f_mean, f_std = norm["flight_mean"], norm["flight_std"]
+
+                    seq_norm = seq.copy()
+                    seq_norm[:, 0] = (seq_norm[:, 0] - h_mean) / h_std
+                    seq_norm[:, 1] = (seq_norm[:, 1] - f_mean) / f_std
+
+                    x_tensor = torch.from_numpy(np.array([seq_norm], dtype='float32'))
+                    with torch.no_grad():
+                        recon, _ = _generic_keystroke_lstm(x_tensor)
+                        mse = float(((recon - x_tensor) ** 2).mean().item())
+
+                    threshold = _ml_metadata["keystroke_model"]["performance"]["anomaly_threshold"]
+                    keystroke_score = min(100.0, (mse / max(threshold, 1e-6)) * 50.0)
+
+                    # For explainability breakdown in cold-start, compare with generic baseline means/stds
+                    g_means = _generic_keystroke_baseline.get("means", {})
+                    g_stds  = _generic_keystroke_baseline.get("stds", {})
+
+                    breakdown = []
+                    z_score_based_risk = 0.0
+                    for feat_name in KEYSTROKE_FEATURES:
+                        if feat_name not in features:
+                            continue
+                        mean   = g_means.get(feat_name, 0.0)
+                        std    = g_stds.get(feat_name,  FEATURES[feat_name]["min_std_floor"])
+                        floor  = FEATURES[feat_name]["min_std_floor"]
+                        weight = FEATURES[feat_name]["weight"]
+                        safe_std = max(std, floor)
+
+                        z = (features[feat_name] - mean) / safe_std
+                        feat_risk = _z_to_risk(z) * weight
+                        z_score_based_risk += feat_risk
+
+                        breakdown.append({
+                            "feature":      feat_name,
+                            "label":        FEATURES[feat_name]["description"],
+                            "observed":     round(features[feat_name], 2),
+                            "baseline_mean": round(mean, 2),
+                            "z_score":      round(z, 2),
+                            "contribution": 0.0,
+                            "unit":         FEATURES[feat_name]["unit"],
+                        })
+
+                    keystroke_score = max(keystroke_score, min(z_score_based_risk, 100.0))
+
+                    for item in breakdown:
+                        feat_name = item["feature"]
+                        mean   = g_means.get(feat_name, 0.0)
+                        std    = g_stds.get(feat_name,  FEATURES[feat_name]["min_std_floor"])
+                        floor  = FEATURES[feat_name]["min_std_floor"]
+                        weight = FEATURES[feat_name]["weight"]
+                        safe_std = max(std, floor)
+                        z = (features[feat_name] - mean) / safe_std
+                        feat_risk = _z_to_risk(z) * weight
+                        item["contribution"] = round(feat_risk * (keystroke_score / 50.0 if keystroke_score > 0 else 1.0), 2)
+
+                    breakdown.sort(key=lambda x: x["contribution"], reverse=True)
+                    return round(keystroke_score, 1), breakdown
+            except Exception as e:
+                log.error(f"Error in generic LSTM fallback: {e}")
+
         return 50.0, []
 
     breakdown  = []
@@ -1452,11 +1524,9 @@ def fuse_scores(
 
     if use_xgb:
         try:
-            device_match = 1 if metadata_features.get("device_match", True) else 0
-            time_of_day_risk = 1 if metadata_features.get("time_of_day_risk", 0.0) > 0.0 else 0
             is_enrolled = 1 if (username and db.is_enrolled(username)) else 0
 
-            vector = [keystroke_score, mouse_score, metadata_score, device_match, time_of_day_risk, is_enrolled]
+            vector = [keystroke_score, mouse_score, metadata_score, is_enrolled]
 
             prob_fraud = float(_xgb_fusion_model.predict_proba([vector])[0][1])
             final_score = round(prob_fraud * 100.0, 1)
@@ -1710,6 +1780,7 @@ def score_session(
             "metadata_score":  result["metadata_score"],
             "action":          action,
             "velocity_flag":   velocity_exceeded,
+            "session_count":   db.get_session_count(username),
         },
         risk_score = final_score,
         risk_band  = band,

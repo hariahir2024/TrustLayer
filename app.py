@@ -1,5 +1,5 @@
 # =============================================================================
-# BehaviorShield — app.py
+# TRUSTLAYER — app.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # FastAPI server — all REST API endpoints + WebSocket for live dashboard.
@@ -29,6 +29,7 @@
 # =============================================================================
 
 import os
+import json
 import time
 import logging
 from contextlib import asynccontextmanager
@@ -275,6 +276,24 @@ async def enroll(req: EnrollRequest):
     return result
 
 
+class MouseEnrollRequest(BaseModel):
+    username:     str
+    mouse_events: list  # list of {x, y, timestamp, event: "move"}
+
+@app.post("/api/enroll-mouse")
+async def enroll_mouse(req: MouseEnrollRequest):
+    """Save zigzag trace as first mouse baseline sample."""
+    if not req.username or not req.mouse_events:
+        raise HTTPException(400, "username and mouse_events required")
+    # Build feature dict from trace events
+    features = ml.extract_mouse_features_public(req.mouse_events, session_duration_ms=3000)
+    if features:
+        ml.add_mouse_training_sample(req.username, features, req.mouse_events, device_class="DESKTOP")
+        return {"status": "ok", "message": "Mouse baseline sample saved"}
+    return {"status": "skipped", "message": "Insufficient trace data"}
+
+
+
 # =============================================================================
 # LOGIN ENDPOINT
 # =============================================================================
@@ -436,6 +455,8 @@ async def score(req: ScoreRequest):
         "ip_address":       session.get("ip_address"),
         "user_agent":       session.get("user_agent"),
         "scoring_interval": result.get("scoring_interval", 30),
+        "session_count":    db.get_session_count(session["username"]),
+        "profile_warm":     db.get_session_count(session["username"]) >= 15,
     })
 
     # Trigger freeze events on high-risk bands
@@ -473,6 +494,8 @@ async def score(req: ScoreRequest):
         "metadata_score":    result.get("metadata_score"),
         "velocity_exceeded": result.get("velocity_exceeded", False),
         "scoring_interval":  result.get("scoring_interval", DEFAULT_SCORING_INTERVAL_SEC),
+        "session_count":     db.get_session_count(session["username"]),
+        "profile_warm":      db.get_session_count(session["username"]) >= 15,
     }
 
 
@@ -682,14 +705,18 @@ async def dashboard_stats():
 
 
 @app.get("/api/dashboard/sessions")
-async def dashboard_sessions():
+async def dashboard_sessions(username: str = None):
     """All sessions with their current risk state for the sessions table."""
-    sessions = db.get_active_sessions()
+    if username:
+        sessions = db.get_active_sessions_matching_user(username)
+    else:
+        sessions = db.get_active_sessions()
     return [
         {
             "session_id":   s["session_id"],
             "username":     s["username"],
             "status":       s["status"],
+            "created_at":   s["created_at"],
             "risk_score":   s["current_risk"],
             "band":         s["risk_band"],
             "is_bot":       s["is_bot"],
@@ -699,6 +726,9 @@ async def dashboard_sessions():
             "ip_address":   s.get("ip_address"),
             "user_agent":   s.get("user_agent"),
             "scoring_interval": s.get("scoring_interval"),
+            "session_count":    db.get_session_count(s["username"]),
+            "profile_warm":     db.get_session_count(s["username"]) >= 15,
+            "is_dismissed":     db.has_false_positive_event(s["session_id"]),
         }
         for s in sessions
     ]
@@ -730,6 +760,139 @@ async def session_history(session_id: str):
     return {"session_id": session_id, "history": history}
 
 
+@app.get("/api/dashboard/session/{session_id}/logs")
+async def session_logs(session_id: str):
+    """Full chronological audit logs specific to a single session."""
+    logs = db.get_session_events(session_id)
+    return [
+        {
+            "event_id":   e["event_id"],
+            "timestamp":  e["timestamp"],
+            "event_type": e["event_type"],
+            "session_id": e.get("session_id"),
+            "username":   e["username"],
+            "risk_score": e["risk_score"],
+            "risk_band":  e["risk_band"],
+            "details":    e["details"],
+        }
+        for e in logs
+    ]
+
+
+@app.get("/api/dashboard/sessions/frozen")
+async def dashboard_frozen_sessions():
+    """All frozen/suspended sessions for the frozen sessions tab."""
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM sessions 
+        WHERE status = 'red_high'
+        ORDER BY created_at DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    res = []
+    for r in rows:
+        d = dict(r)
+        d["risk_history"] = json.loads(d["risk_history"])
+        d["last_breakdown"] = json.loads(d["last_breakdown"])
+        d["is_bot"] = bool(d["is_bot"])
+        d["is_intruder"] = bool(d["is_intruder"])
+        res.append(d)
+        
+    return [
+        {
+            "session_id":   s["session_id"],
+            "username":     s["username"],
+            "status":       s["status"],
+            "created_at":   s["created_at"],
+            "risk_score":   s["current_risk"],
+            "band":         s["risk_band"],
+            "is_bot":       s["is_bot"],
+            "duration_sec": round(time.time() - s["created_at"], 0),
+            "action_count": s["action_count"],
+            "last_breakdown": s.get("last_breakdown"),
+            "ip_address":   s.get("ip_address"),
+            "user_agent":   s.get("user_agent"),
+            "scoring_interval": s.get("scoring_interval"),
+            "session_count":    db.get_session_count(s["username"]),
+            "profile_warm":     db.get_session_count(s["username"]) >= 15,
+        }
+        for s in res
+    ]
+
+
+@app.get("/api/dashboard/sessions/search")
+async def dashboard_search_sessions(username: str = "", range: str = "7d", severity: str = "all"):
+    """Search historical sessions in the SQLite database based on filters."""
+    conn = db._get_conn()
+    cursor = conn.cursor()
+    
+    query = "SELECT * FROM sessions WHERE 1=1"
+    params = []
+    
+    if username:
+        query += " AND username LIKE ?"
+        params.append(f"%{username}%")
+        
+    # Time range calculation
+    now = time.time()
+    if range == "24h":
+        query += " AND created_at >= ?"
+        params.append(now - 24 * 3600)
+    elif range == "7d":
+        query += " AND created_at >= ?"
+        params.append(now - 7 * 24 * 3600)
+    elif range == "30d":
+        query += " AND created_at >= ?"
+        params.append(now - 30 * 24 * 3600)
+        
+    # Severity calculation
+    if severity == "green":
+        query += " AND risk_band = 'GREEN'"
+    elif severity == "amber":
+        query += " AND risk_band LIKE 'AMBER%'"
+    elif severity == "red":
+        query += " AND risk_band LIKE 'RED%'"
+        
+    query += " ORDER BY created_at DESC LIMIT 100"
+    
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    res = []
+    for r in rows:
+        d = dict(r)
+        d["risk_history"] = json.loads(d["risk_history"])
+        d["last_breakdown"] = json.loads(d["last_breakdown"])
+        d["is_bot"] = bool(d["is_bot"])
+        d["is_intruder"] = bool(d["is_intruder"])
+        res.append(d)
+        
+    return [
+        {
+            "session_id":   s["session_id"],
+            "username":     s["username"],
+            "status":       s["status"],
+            "created_at":   s["created_at"],
+            "risk_score":   s["current_risk"],
+            "band":         s["risk_band"],
+            "is_bot":       s["is_bot"],
+            "duration_sec": round(time.time() - s["created_at"], 0),
+            "action_count": s["action_count"],
+            "last_breakdown": s.get("last_breakdown"),
+            "ip_address":   s.get("ip_address"),
+            "user_agent":   s.get("user_agent"),
+            "scoring_interval": s.get("scoring_interval"),
+            "session_count":    db.get_session_count(s["username"]),
+            "profile_warm":     db.get_session_count(s["username"]) >= 15,
+        }
+        for s in res
+    ]
+
+
 # =============================================================================
 # ADMIN / FRAUD-OPS ENDPOINTS
 # =============================================================================
@@ -741,7 +904,8 @@ async def admin_freeze(session_id: str):
     if not session:
         raise HTTPException(404, "Session not found")
 
-    db.invalidate_session(session_id, reason="Manual freeze by fraud-ops")
+    db.update_session_status(session_id, "red_high")
+    db.update_session_risk(session_id, 99.0, "RED_HIGH", {})
     db.log_event(
         event_type = "ADMIN_FREEZE",
         session_id = session_id,
@@ -811,65 +975,6 @@ async def admin_get_baseline(username: str, device_class: str = "DESKTOP"):
         raise HTTPException(404, "Baseline not found")
     return baseline
 
-
-# =============================================================================
-# REGISTRATION ENDPOINT
-# =============================================================================
-
-class RegisterRequest(BaseModel):
-    first_name:    str
-    last_name:     str
-    mobile:        str
-    date_of_birth: str
-    email:         Optional[str] = ""
-    city:          str
-    account_type:  str = "savings"
-    username:      str
-    password:      str
-
-
-@app.post("/api/register")
-async def register(req: RegisterRequest):
-    """
-    Register a new user account.
-    Generates account number and personal passphrase.
-    Returns passphrase for user to memorise before enrollment.
-    """
-    if not req.username or len(req.username) < 4:
-        raise HTTPException(400, "Username must be at least 4 characters")
-    if db.user_exists(req.username):
-        raise HTTPException(409, f"Username '{req.username}' is already taken")
-    if len(req.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters")
-    if not req.first_name or not req.last_name:
-        raise HTTPException(400, "First and last name are required")
-    if not req.city:
-        raise HTTPException(400, "City is required")
-
-    passphrase    = generate_passphrase(req.first_name, req.last_name)
-    password_hash = db.hash_password(req.password)
-
-    user = db.create_user(
-        username      = req.username,
-        first_name    = req.first_name,
-        last_name     = req.last_name,
-        city          = req.city,
-        mobile        = req.mobile,
-        date_of_birth = req.date_of_birth,
-        email         = req.email or "",
-        account_type  = req.account_type,
-        passphrase    = passphrase,
-        password_hash = password_hash,
-    )
-
-    log.info(f"New user registered: {req.username} (passphrase: {passphrase})")
-    return {
-        "success":        True,
-        "username":       req.username,
-        "account_number": user["account_number"],
-        "passphrase":     passphrase,
-        "message":        f"Welcome to {BANK_NAME}! Memorise your passphrase: {passphrase}",
-    }
 
 
 # =============================================================================
@@ -1301,6 +1406,19 @@ async def get_mode():
     """Return the current system operating mode."""
     import constants
     return {"mode": "advisory" if constants.ADVISORY_MODE else "active"}
+
+
+@app.get("/api/admin/model-metadata")
+async def get_model_metadata():
+    """Return the XGBoost and LSTM models metadata and feature importances."""
+    import json
+    try:
+        if os.path.exists("models/model_metadata.json"):
+            with open("models/model_metadata.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {"error": "Metadata file not found"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # =============================================================================

@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # =============================================================================
-# BehaviorShield — scripts/train_xgb_fusion.py
+# TRUSTLAYER — scripts/train_xgb_fusion.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # Trains an XGBoost classifier to fuse Keystroke, Mouse, and Metadata scores
@@ -248,7 +248,7 @@ def save_metadata(
 
 def main():
     print(f"\n{'='*60}")
-    print(f"  BehaviorShield — XGBoost Risk Fusion Model Training")
+    print(f"  TRUSTLAYER — XGBoost Risk Fusion Model Training")
     print(f"  Team {TEAM_NAME} | {HACKATHON}")
     print(f"{'='*60}")
     

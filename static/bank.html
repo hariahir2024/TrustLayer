@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bharat Suraksha Bank — Premium Internet Banking</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=4">
+  <title>Bharat Suraksha Bank â€” Premium Internet Banking</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=5">
   <link rel="manifest" href="/static/manifest.json">
   <style>
     /* Premium layout overrides */
@@ -140,6 +140,46 @@
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
+
+    /* Mobile Responsive Overrides */
+    .mobile-menu-btn {
+      display: none !important;
+    }
+
+    @media (max-width: 768px) {
+      .mobile-menu-btn {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: var(--text-primary);
+        font-size: 1.6rem;
+        cursor: pointer;
+        padding: 0 0.5rem;
+        outline: none;
+      }
+      .dashboard-layout {
+        height: calc(100vh - 70px);
+      }
+      .sidebar.bank-nav-sidebar {
+        position: fixed;
+        top: 70px;
+        left: -280px;
+        width: 280px;
+        height: calc(100vh - 70px);
+        z-index: 999;
+        transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 10px 0 25px rgba(0, 0, 0, 0.35);
+        background: #ffffff;
+      }
+      .sidebar.bank-nav-sidebar.open {
+        left: 0;
+      }
+      .dashboard-content-area {
+        padding: 1.25rem;
+      }
+    }
   </style>
 </head>
 <body class="bank-page">
@@ -147,13 +187,23 @@
   <!-- Main Bank Header Navigation -->
   <header class="navbar">
     <div class="navbar-brand">
+      <button id="mobile-menu-btn" class="mobile-menu-btn">â˜°</button>
+      <!-- Bank Logo -->
       <div class="bank-logo">BSB</div>
-      <span>Bharat Suraksha Bank</span>
+      <span style="font-weight: 800; letter-spacing: -0.01em;">Bharat Suraksha Bank</span>
     </div>
     <div class="navbar-actions">
-      <div class="shield-badge" id="sdk-status-badge">
+      <div class="shield-badge" id="sdk-status-badge" style="display:flex;align-items:center;gap:6px;">
         <div class="shield-dot"></div>
-        <span id="sdk-status-text">BehaviorShield: Monitoring</span>
+        <!-- TrustLayer micro-logo in badge -->
+        <svg width="14" height="14" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+          <defs><linearGradient id="tl-nav" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#6366f1"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient></defs>
+          <rect x="5" y="20" width="26" height="5" rx="2.5" fill="url(#tl-nav)" opacity="0.4"/>
+          <rect x="5" y="14" width="26" height="5" rx="2.5" fill="url(#tl-nav)" opacity="0.65"/>
+          <rect x="5" y="8" width="26" height="6" rx="3" fill="url(#tl-nav)"/>
+          <path d="M18 30 L8 23 L28 23 Z" fill="url(#tl-nav)" opacity="0.45"/>
+        </svg>
+        <span id="sdk-status-text" style="font-size:0.75rem; font-weight:700; background:linear-gradient(90deg,#a5b4fc,#22d3ee); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">TrustLayer: Monitoring</span>
       </div>
       <button class="btn btn-ghost btn-sm" id="logout-btn" style="display: none;">Logout</button>
     </div>
@@ -166,25 +216,27 @@
     
     <!-- VIEW 0: LOGIN GATE -->
     <div id="username-view" class="card card-glass">
-      <h2 class="mb-2 text-center">Welcome to Bharat Suraksha Bank</h2>
-      <p class="text-muted text-center text-sm mb-4">Secure NetBanking Login</p>
-      
-      <div class="form-group mb-3">
-        <label class="form-label" for="start-username">Username</label>
-        <input type="text" id="start-username" class="form-input" placeholder="Enter NetBanking username..." autocomplete="off" required>
-      </div>
+      <form id="username-form" onsubmit="event.preventDefault();">
+        <h2 class="mb-2 text-center">Welcome to Bharat Suraksha Bank</h2>
+        <p class="text-muted text-center text-sm mb-4">Secure NetBanking Login</p>
+        
+        <div class="form-group mb-3">
+          <label class="form-label" for="start-username">Username</label>
+          <input type="text" id="start-username" class="form-input" placeholder="Enter NetBanking username..." autocomplete="off" required>
+        </div>
 
-      <div class="form-group mb-4">
-        <label class="form-label" for="start-password">Password</label>
-        <input type="password" id="start-password" class="form-input" placeholder="Enter NetBanking password..." autocomplete="off" required>
-      </div>
+        <div class="form-group mb-4">
+          <label class="form-label" for="start-password">Password</label>
+          <input type="password" id="start-password" class="form-input" placeholder="Enter NetBanking password..." autocomplete="off" required>
+        </div>
 
-      <button id="btn-next-step" class="btn btn-primary btn-block">Continue</button>
-      
-      <div class="text-center mt-3 text-sm">
-        <span class="text-muted">New to NetBanking?</span>
-        <a href="#" id="link-show-register" class="text-brand fw-600" style="text-decoration: none; margin-left: 0.25rem;">Register Here</a>
-      </div>
+        <button id="btn-next-step" type="submit" class="btn btn-primary btn-block">Continue</button>
+        
+        <div class="text-center mt-3 text-sm">
+          <span class="text-muted">New to NetBanking?</span>
+          <a href="#" id="link-show-register" class="text-brand fw-600" style="text-decoration: none; margin-left: 0.25rem;">Register Here</a>
+        </div>
+      </form>
     </div>
 
     <!-- VIEW 0.5: REGISTRATION WIZARD -->
@@ -234,15 +286,27 @@
         </div>
       </div>
 
+      <div class="form-group mb-3">
+        <label class="form-label" for="reg-account-type">Account Type</label>
+        <select id="reg-account-type" class="form-input">
+          <option value="savings">Savings Account</option>
+          <option value="current">Current Account</option>
+          <option value="salary">Salary Account</option>
+        </select>
+      </div>
+
       <div class="flex gap-3 mt-2">
         <button id="reg-back-login" class="btn btn-secondary btn-block">Back</button>
         <button id="reg-submit-btn" class="btn btn-primary btn-block">Register</button>
       </div>
+      <p class="text-xs text-muted text-center mt-2" style="line-height:1.4;">
+        After registration, you will receive a personal passphrase. Memorise it â€” it is your behavioral login key.
+      </p>
     </div>
 
     <!-- VIEW 0.6: ACCOUNT CREATED CARD -->
     <div id="created-view" class="card card-glass hidden text-center">
-      <h2 class="mb-2 text-center" style="color: var(--green);">✓ Account Created!</h2>
+      <h2 class="mb-2 text-center" style="color: var(--green);">âœ“ Account Created!</h2>
       <p class="text-muted text-sm mb-4">Your NetBanking account has been successfully initialized.</p>
       
       <div class="mb-4" style="background: var(--bg-surface); padding: 1rem; border-radius: var(--radius); border: 1px solid var(--border-color);">
@@ -268,18 +332,19 @@
 
       <div class="text-center mb-4">
         <h5 class="mb-1">Target Passphrase</h5>
-        <div id="enroll-passphrase-display" class="text-mono text-brand fw-700 text-xl" style="background: var(--bg-surface); padding: 0.6rem; border-radius: var(--radius);">
-          SecureAuth@India1
-        </div>
+        <div id="enroll-passphrase-display" class="text-mono text-brand fw-700 text-xl" style="background: var(--bg-surface); padding: 0.6rem; border-radius: var(--radius);"></div>
       </div>
 
-      <div class="form-group mb-3">
+      <form id="enroll-form" onsubmit="event.preventDefault();" class="form-group mb-3">
         <div class="flex justify-between items-center">
           <label class="form-label" for="enroll-input">Type passphrase</label>
           <span class="text-mono text-xs text-secondary" id="enroll-progress-text">Sample 0/5</span>
         </div>
-        <input type="text" id="enroll-input" class="form-input text-center text-mono" autocomplete="off" placeholder="Type here and press Enter...">
-      </div>
+        <div class="flex gap-2">
+          <input type="text" id="enroll-input" class="form-input text-center text-mono flex-1" autocomplete="off" placeholder="Type here and press Enter...">
+          <button id="enroll-submit-btn" type="submit" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: var(--radius); font-weight: 600;">Submit</button>
+        </div>
+      </form>
 
       <div class="score-bar mb-4">
         <div id="enroll-progress-bar" class="score-bar-fill green" style="width: 0%;"></div>
@@ -287,10 +352,10 @@
 
       <!-- Mouse tracing container -->
       <div id="enroll-mouse-step" class="hidden mt-4">
-        <h5 class="mb-1">Biometric Mouse Calibration</h5>
-        <p class="text-muted text-xs">Trace the curved coordinate path from START to END to record cursor rhythm.</p>
+        <h5>Biometric Mouse Calibration</h5>
+        <p class="text-muted text-xs">Trace the zigzag coordinate path from START to END to record cursor rhythm.</p>
         <div class="enroll-path-canvas" id="mouse-path-area" style="overflow: hidden;">
-          <span class="path-label" id="path-instruction-label" style="font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--cyan); z-index: 10;">Trace curve left to right</span>
+          <span class="path-label" id="path-instruction-label" style="font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--cyan); z-index: 10;">Trace zigzag left to right</span>
           <svg viewBox="0 0 560 150" width="100%" height="150" style="position: absolute; top:0; left:0;">
             <!-- Grid Lines -->
             <line x1="0" y1="25" x2="560" y2="25" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
@@ -306,8 +371,8 @@
             <line x1="400" y1="0" x2="400" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
             <line x1="480" y1="0" x2="480" y2="150" stroke="rgba(6, 182, 212, 0.06)" stroke-width="1"/>
 
-            <!-- S-Curve Path -->
-            <path id="calibration-svg-path" d="M 40 75 Q 150 20 280 75 T 520 75" stroke="var(--border-bright)" stroke-width="2.5" fill="none" stroke-dasharray="6 4"/>
+            <!-- Zigzag Path with 5 sharp turns -->
+            <path id="calibration-svg-path" d="M 40 75 L 120 25 L 200 125 L 280 25 L 360 125 L 440 25 L 520 75" stroke="var(--border-bright)" stroke-width="2.5" fill="none" stroke-dasharray="6 4"/>
             
             <!-- START radar marker -->
             <circle cx="40" cy="75" r="18" stroke="var(--cyan)" stroke-width="1" fill="none" stroke-dasharray="4 2" style="opacity: 0.5; transform-origin: 40px 75px; animation: spin 8s linear infinite;"/>
@@ -323,7 +388,7 @@
             <path id="dynamic-trace-path" d="" stroke="var(--green)" stroke-width="2.5" fill="none" style="opacity: 0.8; stroke-linecap: round;"/>
           </svg>
         </div>
-        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green); font-weight: 700;">✓ Mouse signature calibrated successfully</div>
+        <div id="calibration-success" class="text-sm text-center text-mono hidden" style="color: var(--green); font-weight: 700;">âœ“ Mouse signature calibrated successfully</div>
       </div>
 
       <div class="flex gap-3 mt-4">
@@ -334,23 +399,25 @@
 
     <!-- VIEW 2: LOGIN VIEW -->
     <div id="login-view" class="card card-glass hidden">
-      <h2 class="mb-2 text-center">Verify Credentials</h2>
-      <p id="login-message" class="text-muted text-center text-sm mb-4">Complete authentication to enter.</p>
-      
-      <div class="form-group mb-3">
-        <label class="form-label" for="login-username-readonly">Username</label>
-        <input type="text" id="login-username-readonly" class="form-input" readonly>
-      </div>
+      <form id="login-form" onsubmit="event.preventDefault();">
+        <h2 class="mb-2 text-center">Verify Credentials</h2>
+        <p id="login-message" class="text-muted text-center text-sm mb-4">Complete authentication to enter.</p>
+        
+        <div class="form-group mb-3">
+          <label class="form-label" for="login-username-readonly">Username</label>
+          <input type="text" id="login-username-readonly" class="form-input" readonly>
+        </div>
 
-      <div class="form-group mb-4">
-        <label class="form-label" for="login-password">Passphrase</label>
-        <input type="password" id="login-password" class="form-input text-mono" placeholder="Type enrolled passphrase..." autocomplete="off" required>
-      </div>
+        <div class="form-group mb-4">
+          <label class="form-label" for="login-password">Passphrase</label>
+          <input type="password" id="login-password" class="form-input text-mono" placeholder="Type enrolled passphrase..." autocomplete="off" required>
+        </div>
 
-      <div class="flex gap-3">
-        <button id="login-back" class="btn btn-secondary btn-block">Back</button>
-        <button id="login-submit" class="btn btn-primary btn-block">Log In</button>
-      </div>
+        <div class="flex gap-3">
+          <button id="login-back" type="button" class="btn btn-secondary btn-block">Back</button>
+          <button id="login-submit" type="submit" class="btn btn-primary btn-block">Log In</button>
+        </div>
+      </form>
     </div>
 
   </div>
@@ -365,31 +432,31 @@
       <div class="sidebar-header" style="margin-top: 0;">NetBanking Menu</div>
       <nav class="sidebar-nav">
         <div class="bank-sidebar-item active" id="tab-nav-dashboard">
-          🏠 Overview Dashboard
+          &#x1F3E0; Overview Dashboard
         </div>
         <div class="bank-sidebar-item" id="tab-nav-transfer">
-          💸 Fund Transfer
+          &#x1F4B8; Fund Transfer
         </div>
         <div class="bank-sidebar-item" id="tab-nav-bills">
-          🔌 Bill Payments
+          &#x1F50C; Bill Payments
         </div>
         <div class="bank-sidebar-item" id="tab-nav-upi">
-          📱 UPI Transfers
+          &#x1F4F1; UPI Transfers
         </div>
         <div class="bank-sidebar-item" id="tab-nav-payees">
-          👥 Manage Payees
+          &#x1F465; Manage Payees
         </div>
         <div class="bank-sidebar-item" id="tab-nav-statements">
-          📄 Statements & Audit
+          &#x1F4C4; Statements & Audit
         </div>
         <div class="bank-sidebar-item" id="tab-nav-fd">
-          💰 Fixed Deposits
+          &#x1F4B0; Fixed Deposits
         </div>
         <div class="bank-sidebar-item" id="tab-nav-profile">
-          👤 Profile Settings
+          &#x1F464; Profile Settings
         </div>
         <div class="bank-sidebar-item" id="tab-nav-support">
-          🛠️ Customer Care
+          &#x1F6E0;&#xFE0F; Customer Care
         </div>
       </nav>
 
@@ -421,24 +488,24 @@
         <!-- Welcome banner -->
         <div class="card card-glass" style="background: linear-gradient(90deg, #0d2354 0%, #081224 100%);">
           <h2 style="color: #fff;">Welcome back, <span id="hello-user">Customer</span></h2>
-          <p class="text-sm text-secondary">Secured continuously by Solaris BehaviorShield. Last login: Today from registered device.</p>
+          <p class="text-sm text-secondary">Secured continuously by Solaris TrustLayer. Last login: Today from registered device.</p>
         </div>
 
         <!-- Account Sum Grid -->
         <div class="bank-summary-grid">
           <div class="deposit-card">
             <span class="deposit-label">Savings Account (Primary)</span>
-            <div class="deposit-val balance-amount">₹ 4,23,891.50</div>
+            <div class="deposit-val balance-amount">&#x20B9; 4,23,891.50</div>
             <p class="text-xs text-muted mt-1">A/C: ******7129</p>
           </div>
           <div class="deposit-card">
             <span class="deposit-label">Current Account (Business)</span>
-            <div class="deposit-val">₹ 12,85,910.00</div>
+            <div class="deposit-val">&#x20B9; 12,85,910.00</div>
             <p class="text-xs text-muted mt-1">A/C: ******8904</p>
           </div>
           <div class="deposit-card">
             <span class="deposit-label">Vishwa Term Deposit</span>
-            <div class="deposit-val">₹ 5,00,000.00</div>
+            <div class="deposit-val">&#x20B9; 5,00,000.00</div>
             <p class="text-xs text-muted mt-1">Matures: 12 Dec 2026</p>
           </div>
         </div>
@@ -469,19 +536,19 @@
             <h4 class="mb-3">Quick Utilities</h4>
             <div class="quick-actions">
               <button class="quick-action-btn" onclick="switchBankTab('transfer')">
-                <span class="icon">💸</span>
+                <span class="icon">&#x1F4B8;</span>
                 <span>Send Money</span>
               </button>
               <button class="quick-action-btn" onclick="switchBankTab('payees')">
-                <span class="icon">➕</span>
+                <span class="icon">&#x2795;</span>
                 <span>Add Payee</span>
               </button>
               <button class="quick-action-btn" onclick="switchBankTab('statements')">
-                <span class="icon">📄</span>
+                <span class="icon">&#x1F4C4;</span>
                 <span>Statements</span>
               </button>
               <button class="quick-action-btn" id="btn-mock-support" onclick="alert('Secured session support connected.')">
-                <span class="icon">📞</span>
+                <span class="icon">&#x1F4DE;</span>
                 <span>Help Desk</span>
               </button>
             </div>
@@ -490,7 +557,7 @@
             <div class="mt-4 p-4" style="background: var(--bg-card-alt); border-radius: var(--radius-lg); border: 1px solid var(--border);">
               <div class="flex justify-between text-sm mb-1">
                 <strong>Home Loan Repayment</strong>
-                <span class="text-mono">₹ 14,35,000 / ₹ 20,000,000</span>
+                <span class="text-mono">&#x20B9; 14,35,000 / &#x20B9; 20,000,000</span>
               </div>
               <div class="score-bar">
                 <div class="score-bar-fill blue" style="width: 71%;"></div>
@@ -524,7 +591,7 @@
 
         <div class="form-group mb-3">
           <label class="form-label" for="tx-amount">Transfer Amount (INR)</label>
-          <input type="number" id="tx-amount" class="form-input text-mono" placeholder="₹ Enter amount to transfer..." autocomplete="off">
+          <input type="number" id="tx-amount" class="form-input text-mono" placeholder="&#x20B9; Enter amount to transfer..." autocomplete="off">
         </div>
 
         <div class="form-group mb-4">
@@ -590,7 +657,7 @@
                 <option value="CREDIT">Credit Entries Only</option>
               </select>
             </div>
-            <button id="stmt-download" class="btn btn-secondary">📥 Mock PDF Statement</button>
+            <button id="stmt-download" class="btn btn-secondary">&#x1F4E5; Mock PDF Statement</button>
           </div>
 
           <!-- Statements table -->
@@ -600,8 +667,8 @@
                 <th>Transaction Date</th>
                 <th>Transaction Reference ID</th>
                 <th>Description</th>
-                <th>Debit (₹)</th>
-                <th>Credit (₹)</th>
+                <th>Debit (&#x20B9;)</th>
+                <th>Credit (&#x20B9;)</th>
                 <th>Result</th>
               </tr>
             </thead>
@@ -614,7 +681,7 @@
 
       <!-- TAB 5: BILL PAYMENTS -->
       <div id="page-bills" class="card card-glass hidden" style="max-width: 650px;">
-        <h2 class="mb-1">🔌 Utility Bill Payments</h2>
+        <h2 class="mb-1">&#x1F50C; Utility Bill Payments</h2>
         <p class="text-sm text-secondary mb-4">Pay utility, telecom, and insurance bills instantly.</p>
 
         <div class="form-group mb-3">
@@ -634,7 +701,7 @@
         </div>
 
         <div class="form-group mb-4">
-          <label class="form-label" for="bill-amount">Payment Amount (₹)</label>
+          <label class="form-label" for="bill-amount">Payment Amount (&#x20B9;)</label>
           <input type="number" id="bill-amount" class="form-input" placeholder="Enter amount to pay..." min="1" step="any" required>
         </div>
 
@@ -643,10 +710,10 @@
 
       <!-- TAB 6: UPI TRANSFERS -->
       <div id="page-upi" class="flex flex-col gap-6 hidden" style="max-width: 750px;">
-        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem;">
+        <div class="bank-grid-split-2">
           
           <div class="card card-glass">
-            <h2 class="mb-1">📱 UPI Instant Transfer</h2>
+            <h2 class="mb-1">&#x1F4F1; UPI Instant Transfer</h2>
             <p class="text-sm text-secondary mb-4">Transfer money instantly to any VPA / UPI ID.</p>
 
             <div class="form-group mb-3">
@@ -655,7 +722,7 @@
             </div>
 
             <div class="form-group mb-4">
-              <label class="form-label" for="upi-amount">Amount (₹)</label>
+              <label class="form-label" for="upi-amount">Amount (&#x20B9;)</label>
               <input type="number" id="upi-amount" class="form-input" placeholder="Enter transfer amount..." min="1" required>
             </div>
 
@@ -680,15 +747,15 @@
 
       <!-- TAB 7: FIXED DEPOSITS -->
       <div id="page-fd" class="flex flex-col gap-6 hidden" style="max-width: 800px;">
-        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem;">
+        <div class="bank-grid-split-2">
           
           <div class="card card-glass">
-            <h2 class="mb-1">💰 Book Fixed Deposit</h2>
+            <h2 class="mb-1">&#x1F4B0; Book Fixed Deposit</h2>
             <p class="text-sm text-secondary mb-4">Invest your savings in high-yield Fixed Deposits.</p>
 
             <div class="form-group mb-3">
-              <label class="form-label" for="fd-amount">Principal Amount (₹)</label>
-              <input type="number" id="fd-amount" class="form-input" placeholder="Min ₹10,000" min="10000" required>
+              <label class="form-label" for="fd-amount">Principal Amount (&#x20B9;)</label>
+              <input type="number" id="fd-amount" class="form-input" placeholder="Min &#x20B9;10,000" min="10000" required>
             </div>
 
             <div class="form-group mb-3">
@@ -703,11 +770,11 @@
             <div class="mb-4" style="background: rgba(6, 182, 212, 0.05); padding: 0.75rem; border-radius: var(--radius); border: 1px dashed var(--cyan);">
               <div class="flex justify-between text-sm mb-1">
                 <span class="text-secondary">Maturity Amount:</span>
-                <span class="fw-700 text-cyan" id="fd-calc-maturity">₹ 10,680.00</span>
+                <span class="fw-700 text-cyan" id="fd-calc-maturity">&#x20B9; 10,680.00</span>
               </div>
               <div class="flex justify-between text-sm">
                 <span class="text-secondary">Interest Earned:</span>
-                <span class="fw-700 text-green" id="fd-calc-interest">₹ 680.00</span>
+                <span class="fw-700 text-green" id="fd-calc-interest">&#x20B9; 680.00</span>
               </div>
             </div>
 
@@ -752,10 +819,10 @@
 
       <!-- TAB 8: PROFILE & SECURITY CENTRE -->
       <div id="page-profile" class="flex flex-col gap-6 hidden" style="max-width: 800px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div class="bank-grid-split-equal">
           
           <div class="card card-glass">
-            <h2 class="mb-3">👤 Personal Profile</h2>
+            <h2 class="mb-3">&#x1F464; Personal Profile</h2>
             <div class="flex flex-col gap-2 text-sm">
               <div class="flex justify-between border-b pb-1" style="border-bottom: 1px solid var(--border-color);">
                 <span class="text-secondary">First Name</span>
@@ -781,7 +848,7 @@
           </div>
 
           <div class="card card-glass">
-            <h3 class="mb-3">🔒 Change NetBanking Password</h3>
+            <h3 class="mb-3">&#x1F512; Change NetBanking Password</h3>
             
             <div class="form-group mb-2">
               <label class="form-label" for="prof-old-pass">Current Password</label>
@@ -799,7 +866,7 @@
         </div>
 
         <div class="card card-glass">
-          <h3 class="mb-1">🛡️ Login History & Audit Centre</h3>
+          <h3 class="mb-1">&#x1F6E1;&#xFE0F; Login History & Audit Centre</h3>
           <p class="text-sm text-secondary mb-4">Audit log of the last 5 security events recorded for your credentials.</p>
           
           <table class="data-table">
@@ -821,10 +888,10 @@
 
       <!-- TAB 9: CUSTOMER CARE -->
       <div id="page-support" class="flex flex-col gap-6 hidden" style="max-width: 800px;">
-        <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 1.5rem;">
+        <div class="bank-grid-split-2">
           
           <div class="card card-glass">
-            <h2 class="mb-1">🛠️ Log a Support Ticket</h2>
+            <h2 class="mb-1">&#x1F6E0;&#xFE0F; Log a Support Ticket</h2>
             <p class="text-sm text-secondary mb-4">Report discrepancies, frauds, or general inquiries to customer care.</p>
 
             <div class="form-group mb-3">
@@ -849,16 +916,16 @@
             <h3 class="mb-3">Frequently Asked Questions</h3>
             <div class="flex flex-col gap-3">
               <details style="background: var(--bg-surface); padding: 0.5rem; border-radius: 4px; cursor: pointer;">
-                <summary class="fw-600 text-sm">What is BehaviorShield protection?</summary>
+                <summary class="fw-600 text-sm">What is TrustLayer protection?</summary>
                 <p class="text-xs text-muted mt-2">
-                  BehaviorShield uses advanced behavioral biometrics to monitor your typing cadence and mouse movement speed. Even if an attacker steals your passwords, they cannot duplicate your movement rhythm, preventing fraud.
+                  TrustLayer uses advanced behavioral biometrics to monitor your typing cadence and mouse movement speed. Even if an attacker steals your passwords, they cannot duplicate your movement rhythm, preventing fraud.
                 </p>
               </details>
               
               <details style="background: var(--bg-surface); padding: 0.5rem; border-radius: 4px; cursor: pointer;">
                 <summary class="fw-600 text-sm">How does the 24-hour payee cooldown work?</summary>
                 <p class="text-xs text-muted mt-2">
-                  When you register a new payee, there is a 24-hour security window. During this time, transfers to that payee are limited to ₹5,000 as a safeguard against immediate transfer attempts by intruders.
+                  When you register a new payee, there is a 24-hour security window. During this time, transfers to that payee are limited to &#x20B9;5,000 as a safeguard against immediate transfer attempts by intruders.
                 </p>
               </details>
 
@@ -900,8 +967,8 @@
        ========================================== -->
   <aside class="demo-controller" id="demo-widget">
     <div class="demo-ctrl-header" id="demo-widget-toggle">
-      <span class="text-mono fw-700 text-sm">🛠️ DEMO CONTROLLER</span>
-      <span id="demo-toggle-icon">▼</span>
+      <span class="text-mono fw-700 text-sm">&#x1F6E0;&#xFE0F; DEMO CONTROLLER</span>
+      <span id="demo-toggle-icon">&#x25BC;</span>
     </div>
     
     <div class="demo-ctrl-body">
@@ -933,7 +1000,7 @@
       </button>
 
       <div class="live-sdk-status">
-        <button id="btn-quick-fill" class="btn btn-secondary btn-sm btn-block">⚡ Quick-Fill Credentials</button>
+        <button id="btn-quick-fill" class="btn btn-secondary btn-sm btn-block">&#x26A1; Quick-Fill Credentials</button>
         <div id="sim-telemetry-hud" class="mt-2 p-2 text-xs text-mono" style="background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--cyan); display: none;">
           <div class="flex justify-between"><span>Key Speed:</span><span><strong id="sim-key-speed">-</strong> CPM</span></div>
           <div class="flex justify-between"><span>Avg Dwell:</span><span><strong id="sim-avg-dwell">-</strong> ms</span></div>
@@ -953,7 +1020,7 @@
   <!-- Fullscreen Matrix Freeze -->
   <div id="freeze-overlay" class="freeze-overlay hidden">
     <div class="freeze-box">
-      <div class="freeze-icon">🚨</div>
+      <div class="freeze-icon">&#x1F6A8;</div>
       <h2>Session Frozen</h2>
       <p>Continuous biometric checks detected highly anomalous keystroke and mouse rhythms during this session.</p>
       <p class="text-sm">Bharat Suraksha Bank security engine has locked this session to prevent fraud. Please contact customer care.</p>
@@ -967,41 +1034,43 @@
   <!-- Amber Mid Passphrase Challenge -->
   <div id="challenge-backdrop" class="challenge-modal-backdrop hidden">
     <div class="challenge-modal">
-      <h3>Identity Verification</h3>
-      <p>Due to a change in your typing rhythm, please verify your identity by re-typing the baseline passphrase:</p>
-      <div class="text-mono text-center text-brand fw-700 mb-4" style="background: var(--bg-surface); padding: 0.5rem; border-radius: var(--radius); font-size: 1.2rem;">
-        SecureAuth@India1
-      </div>
-      <div class="form-group mb-4">
-        <input type="text" id="challenge-input" class="form-input text-center text-mono" placeholder="Type baseline passphrase here..." autocomplete="off">
-        <div id="challenge-error" class="text-sm text-brand mt-1 hidden" style="color: var(--red);">Verification failed. Try again.</div>
-      </div>
-      <div class="flex justify-between items-center">
-        <span class="text-xs text-muted" id="challenge-attempts">Attempts remaining: 3</span>
-        <button id="challenge-submit-btn" class="btn btn-primary btn-sm">Verify Identity</button>
-      </div>
+      <form id="challenge-form" onsubmit="event.preventDefault();">
+        <h3>Identity Verification</h3>
+        <p>Due to a change in your typing rhythm, please verify your identity by re-typing the baseline passphrase:</p>
+        <div id="challenge-passphrase-display" class="text-mono text-center text-brand fw-700 mb-4" style="background: var(--bg-surface); padding: 0.5rem; border-radius: var(--radius); font-size: 1.2rem;"></div>
+        <div class="form-group mb-4">
+          <input type="text" id="challenge-input" class="form-input text-center text-mono" placeholder="Type baseline passphrase here..." autocomplete="off">
+          <div id="challenge-error" class="text-sm text-brand mt-1 hidden" style="color: var(--red);">Verification failed. Try again.</div>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-xs text-muted" id="challenge-attempts">Attempts remaining: 3</span>
+          <button id="challenge-submit-btn" type="submit" class="btn btn-primary btn-sm">Verify Identity</button>
+        </div>
+      </form>
     </div>
   </div>
 
   <!-- Amber High OTP Modal -->
   <div id="otp-backdrop" class="challenge-modal-backdrop hidden">
     <div class="challenge-modal" style="border-color: var(--amber);">
-      <h3>Enhanced Verification Required</h3>
-      <p>Due to suspicious session activity, a one-time passcode (OTP) has been sent to your registered mobile.</p>
-      <div class="form-group mb-4">
-        <input type="text" id="otp-input" class="form-input text-center text-mono" placeholder="------" maxlength="6" autocomplete="off" style="font-size: 1.5rem; letter-spacing: 0.5em;">
-        <div id="otp-error" class="text-sm text-brand mt-1 hidden" style="color: var(--red);">Invalid verification code. Try again.</div>
-      </div>
-      <div class="flex justify-between items-center">
-        <button id="otp-cancel-btn" class="btn btn-ghost btn-sm">Cancel</button>
-        <button id="otp-submit-btn" class="btn btn-primary btn-sm">Submit Code</button>
-      </div>
+      <form id="otp-form" onsubmit="event.preventDefault();">
+        <h3>Enhanced Verification Required</h3>
+        <p>Due to suspicious session activity, a one-time passcode (OTP) has been sent to your registered mobile.</p>
+        <div class="form-group mb-4">
+          <input type="text" id="otp-input" class="form-input text-center text-mono" placeholder="------" maxlength="6" autocomplete="off" style="font-size: 1.5rem; letter-spacing: 0.5em;">
+          <div id="otp-error" class="text-sm text-brand mt-1 hidden" style="color: var(--red);">Invalid verification code. Try again.</div>
+        </div>
+        <div class="flex justify-between items-center">
+          <button id="otp-cancel-btn" type="button" class="btn btn-ghost btn-sm">Cancel</button>
+          <button id="otp-submit-btn" type="submit" class="btn btn-primary btn-sm">Submit Code</button>
+        </div>
+      </form>
     </div>
   </div>
 
   <!-- Script tags -->
-  <script src="/static/js/sdk.js?v=3"></script>
-  <script src="/static/js/bank.js?v=3"></script>
+  <script src="/static/js/sdk.js?v=4"></script>
+  <script src="/static/js/bank.js?v=4"></script>
 
 </body>
 </html>

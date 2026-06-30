@@ -1,5 +1,5 @@
-"""
-BehaviorShield — XGBoost Augmented Retraining Script (Stream 6C)
+﻿"""
+TRUSTLAYER — XGBoost Augmented Retraining Script (Stream 6C)
 Team SOLARIS | CBI Hackathon 2026
 
 Combines real labeled sessions from SQLite (legitimate + intruder)
@@ -242,7 +242,7 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
     # ── Save results report ──
     results_path = "scripts/retrain_results.txt"
     with open(results_path, "w") as f:
-        f.write("BehaviorShield XGBoost Retraining Report\n")
+        f.write("TRUSTLAYER XGBoost Retraining Report\n")
         f.write("=" * 50 + "\n")
         for k, v in report.items():
             f.write(f"{k}: {v}\n")
@@ -256,6 +256,6 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
 # =============================================================================
 
 if __name__ == "__main__":
-    log.info("BehaviorShield XGBoost Augmented Retraining")
+    log.info("TRUSTLAYER XGBoost Augmented Retraining")
     log.info("=" * 50)
     retrain(real_sample_weight=5.0)

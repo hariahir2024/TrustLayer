@@ -1,88 +1,229 @@
-# BehaviorShield — Continuous AI Behavioral Biometric Authentication
+# TRUSTLAYER — Continuous AI Behavioral Biometric Authentication
+**Team SOLARIS | CBI Hackathon 2026 Phase II Submission | MNNIT Allahabad**
 
-**Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad**
-
-BehaviorShield is a sovereign, continuous, AI-driven behavioral biometric authentication system designed for Indian Public Sector Banks. It silently monitors user keystroke rhythm and mouse trajectories during active NetBanking sessions to identify account takeover (ATO), credential sharing, and browser automation bots in real time.
-
----
-
-## Key Features
-
-1. **Continuous Verification**: Rather than a single login check, BehaviorShield re-evaluates session risk continuously (every 10s to 30s) using a lightweight client-side Telemetry SDK (`sdk.js`).
-2. **Explainable AI (SHAP-lite)**: Provides real-time feature contribution breakdowns (e.g., *"+14.0 risk: Mean key hold duration deviated from enrolled baseline"*).
-3. **Adaptive Friction Response**: 
-   - **Green (Low Risk 0-29)**: Session continues silently.
-   - **Amber Low/Mid (Medium Risk 30-70)**: Triggers silent monitoring escalation or a step-up typing rhythm verification modal.
-   - **Amber High (Elevated Risk)**: REST API locks down high-value transactions, requiring out-of-band verification (OTP).
-   - **Red (High Anomaly/Bot 71-100)**: Instant Matrix-style locked overlay, terminating the session and alert pushes.
-4. **Immediate Bot Heuristics**: Captures webdriver driver footprints, 0ms programmatic timings, and straight-line trajectory patterns before model scoring.
+TRUSTLAYER is a sovereign, continuous, AI-driven behavioral biometric authentication system designed for Indian Public Sector Banks (PSBs). It silently monitors user keystroke rhythm and mouse trajectories during active NetBanking sessions to identify account takeover (ATO), credential sharing, and automated bot scripts in real time, without adding friction for legitimate customers.
 
 ---
 
-## Project Structure
+## 📖 Project Overview & Core Concept
+
+NetBanking security has historically relied on **point-in-time** checks (e.g., username/password at login and OTPs during transfers). However, once a session is established, it remains vulnerable to:
+1. **Account Takeover (ATO)**: Intruders hijacking an active session while the owner is away.
+2. **Credential Sharing**: Users sharing access with unauthorized individuals.
+3. **Remote Access Trojans (RATs)**: Malicious software controlling the browser.
+4. **Automated Bot Attacks**: Headless scripts performing automated fund transfers.
+
+**TRUSTLAYER** solves this by establishing **Continuous Verification**. A lightweight client-side Telemetry SDK (`sdk.js`) silently records keyboard timings and mouse movements during natural usage. These features are evaluated by our backend machine learning engines (Z-Score keystroke comparison, Isolation Forest mouse path analysis, and XGBoost fusion classification) to dynamically adjust a session's risk score.
+
+---
+
+## 🚀 Key Features
+
+1. **Continuous Verification Loop**: Evaluates session risk dynamically (every 10s to 30s) instead of relying on a single login check.
+2. **Explainable AI (SHAP-lite)**: Provides real-time, human-readable explanations in the SOC dashboard (e.g., *"+14.0 risk: Flight time between keys 'A' and 'S' deviated from the calibrated baseline"*).
+3. **Adaptive Friction Security (Green, Amber, Red)**:
+   - **Green (Risk 0–29)**: Session continues silently.
+   - **Amber Low/Mid (Risk 30–70)**: Escalates monitoring frequency or triggers a step-up typing rhythm modal.
+   - **Amber High (Risk 71–89)**: Locks high-value transactions (such as funds transfers), requiring out-of-band verification (OTP).
+   - **Red (Risk 90–100 / Bot)**: Instantly freezes the user interface with an overlay and locks the session, sending immediate alert pushes to the SOC.
+4. **Immediate Bot Heuristics**: Catches webdriver footprints, straight-line cursor movements, and 0ms automated typing before machine learning model evaluation.
+
+---
+
+## 📁 Repository Structure
 
 ```
-adventurous-pythagoras/ (Workspace Repository)
-├── constants.py            ← All system thresholds, weights, and feature limits
-├── database.py             ← In-memory session registry and user profile database
-├── ml_engine.py            ← Z-Score keystroke profiler + Isolation Forest mouse engine
-├── app.py                  ← FastAPI server (REST APIs + WebSocket + Static Files)
-├── requirements.txt        ← Python packages (FastAPI, Scikit-Learn, Numpy, Pandas)
+<project_root_directory>/ (Submission Package)
+├── constants.py              ← System thresholds, weights, and feature limits
+├── db_sqlite.py              ← SQLite database handlers for profiles, logs, and events
+├── ml_engine.py              ← Feature extraction, Z-Score keystroke model, and Isolation Forest
+├── app.py                    ← FastAPI backend server (REST, WebSockets, and Static routing)
+├── requirements.txt          ← Python package dependencies
 │
-├── verify_integration.py   ← Automated end-to-end integration test suite
-├── test_ml_engine.py       ← Local test suite for feature extraction and Z-Score logic
+├── verify_integration.py     ← Portable automated integration test suite
+├── verify_datasets.py        ← Dataset verification test suite
 │
-└── static/                 ← Frontend Client Assets
-    ├── index.html          ← Landing page with technical architecture layouts
-    ├── bank.html           ← "Bharat Suraksha Bank" internet banking portal simulator
-    ├── dashboard.html      ← BehaviorShield Security Operations Center (SOC) dashboard
+├── models/                   ← Pre-trained machine learning classifiers
+│   ├── xgboost_fusion.pkl    ← Retrained XGBoost fusion classifier
+│   └── model_metadata.json   ← Dynamic model evaluation metrics (F1, precision)
+│
+├── scripts/                  ← Model utility scripts
+│   └── retrain_xgb_with_kmt.py ← Retrain XGBoost fusion using real-world KMT dataset
+│
+└── static/                   ← Frontend portal assets
+    ├── index.html            ← Project launcher landing page
+    ├── bank.html             ← "Bharat Suraksha Bank" NetBanking simulator
+    ├── dashboard.html        ← TRUSTLAYER Security Operations Center (SOC) dashboard
     │
     ├── css/
-    │   └── style.css       ← Premium dark-mode design system & overlays
+    │   └── style.css         ← UI stylesheet and overlays
     └── js/
-        ├── sdk.js          ← Silent biometric telemetry collector SDK
-        ├── bank.js         ← Bharat Suraksha Bank controller, form validations, & simulator
-        └── dashboard.js    ← WebSocket feed receiver, Chart.js, & analyst controls
+        ├── sdk.js            ← Client-side biometric telemetry collector SDK
+        ├── bank.js           ← NetBanking transaction and registration handler
+        └── dashboard.js      ← SOC dashboard manager (WebSockets, Chart.js, and overrides)
 ```
 
 ---
 
-## Installation & Running Locally
+## 🛠️ Installation & Environment Setup
 
-1. **Clone the repository and install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Follow these steps to set up the local environment and launch the prototype.
 
-2. **Start the FastAPI Application Server**:
-   ```bash
-   python app.py
-   ```
-   *Note: The server will run on port `8080` (configured dynamically to avoid port conflicts).*
+### Prerequisites
+* Python 3.9, 3.10, or 3.11 installed.
+* Standard modern web browser (Google Chrome, Microsoft Edge, or Mozilla Firefox).
 
-3. **Access the Portal**:
-   - Open your browser to `http://localhost:8080/` to view the launcher landing page.
-   - Click **Bharat Suraksha Bank Simulator** to start a session.
-   - Click **Security Operations Center** to open the live analyst monitoring dashboard.
+### Step 1: Create a Virtual Environment
+It is highly recommended to use a virtual environment to prevent dependency conflicts with other Python installations:
+```bash
+# Navigate to the project root directory
+cd <project_root_directory>
+
+# Create the virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+### Step 2: Install Dependencies
+Install all required libraries, including FastAPI, scikit-learn, numpy, pandas, and uvicorn:
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Step 3: Run the FastAPI Server
+Launch the server process. It will run on port `8080` by default:
+```bash
+python app.py
+```
+*Note: Once started, you will see a log line in the terminal indicating uvicorn is running: `INFO: Uvicorn running on http://127.0.0.1:8080`.*
 
 ---
 
-## Step-by-Step Demo Walkthrough
+## 🧪 Testing & Model Retraining
 
-### 1. Silent Enrollment
-1. Open **Bharat Suraksha Bank** (`http://localhost:8080/bank`) and enter a new username (e.g., `solaris_tester`). Click **Continue**.
-2. Because the username is unregistered, you will see the **Enrollment Wizard**.
-3. Under the floating **Demo Controller** (bottom right), select the **Legitimate Owner** persona.
-4. Click **⚡ Quick-Fill Credentials** 5 times. The simulator programmatically types the enrollment passphrase with natural human timing variations.
-5. Sweep your mouse pointer along the curved line from **START** to **END** to calibrate your mouse profile.
-6. Click **Complete Enrollment**. The account profile is built and stored!
+We provide both automated verification test suites and retraining pipelines using real-world biometric datasets.
 
-### 2. Live Threat Testing
-1. Return to the portal home screen, select a persona in the **Demo Controller**, and click **⚡ Quick-Fill Credentials** on the login page:
-   - **Legitimate Owner**: Types with normal fluid speed. Log in succeeds. The SOC dashboard shows a stable, low-risk **Green** status.
-   - **Human Intruder**: Types with slow, hesitant rhythms. Log in prompts an **Identity Verification modal** (typing step-up challenge) or an elevated **Amber** risk indicator.
-   - **Automated Bot**: Types instantly (0ms timings). Triggers immediate bot heuristic rules, freezing the UI with a **🚨 Session Frozen** red overlay.
-2. Open the **SOC Dashboard** (`http://localhost:8080/dashboard`) side-by-side. Click on your active session to view:
-   - Live Chart.js bar graph comparing hold/flight times vs enrolled baselines.
-   - Mouse trajectory drawing path (Green for normal, Red for bots).
-   - Analyst overrides: **Force Freeze** or **False Positive (Unfreeze)**.
+### 1. Run Automated Integration Tests
+Verify that the server, database, WebSocket broadcasts, and machine learning models are functioning correctly under different scenarios (legitimate owner, human intruder, bot script):
+```bash
+python verify_integration.py
+```
+*This script launches a temporary background server instance on port 8089, simulates telemetry data for the three personas, verifies that the system blocks threats, and prints a success report.*
+
+### 2. Model Retraining (Real KMT Dataset)
+The fusion classifier has been retrained using the **KMT (Keystroke-Mouse-Touch) Behavioral Biometrics Dataset** containing 1,760 sessions from 88 real-world users:
+```bash
+python scripts/retrain_xgb_with_kmt.py
+```
+*Running this script profiles keystroke/mouse parameters, trains the model (`models/xgboost_fusion.pkl`), and outputs model statistics. The model currently achieves:*
+* **Generalization Accuracy**: 87.97%
+* **Precision**: 80.96%
+* **Recall**: 92.97%
+* **F1 Score**: 86.55%
+
+---
+
+## 🖥️ Live Demo Walkthrough Guide
+
+Open your browser to `http://localhost:8080/` to access the launcher page, then follow this flow:
+
+### Phase 1: Registration & Calibration
+1. Click **Bharat Suraksha Bank Simulator** (`http://localhost:8080/bank`).
+2. Click **Register Here** and create a new account (e.g., username: `solaris_user`, password: `Password@26`).
+3. Click **Register**. The system will generate an account number and a unique **11-character passphrase** (e.g., `SolaTest@26`). Copy this passphrase.
+4. Click **Proceed to Login**, enter your username and password, and click **Continue**.
+5. You will enter the **Enrollment Wizard** (new device calibration).
+6. Under the **Demo Controller** (floating in the bottom right), select the **Legitimate Owner** persona.
+7. Click **⚡ Quick-Fill Credentials** 5 times to type the passphrase with natural human variations.
+8. Drag your mouse along the curved calibration line from **START** to **END** to record mouse dynamics.
+9. Click **Complete Enrollment**. Your biometric profile is now securely generated and stored!
+
+### Phase 2: Simulating Threat Personas
+Open the **Security Operations Center (SOC) Dashboard** (`http://localhost:8080/dashboard`) in a side-by-side browser window.
+1. **Legitimate Owner**: Log in using the `Legitimate Owner` persona. The session completes successfully. The SOC dashboard registers a stable, low-risk **Green** status.
+2. **Human Intruder**: Select the `Human Intruder` persona in the Demo Controller and click log in. The keystroke rhythm will be slow/hesitant. An **Identity Verification Modal** (step-up challenge) will appear on the banking screen.
+3. **Automated Bot**: Select the `Automated Bot` persona and click log in. The bot types instantly (0ms keys). The system instantly blocks the session, showing a **🚨 Session Frozen** lock overlay on the banking screen, and logs the threat in the SOC.
+
+### Phase 3: SOC Analyst Overrides
+In the **SOC Dashboard**:
+1. Click on the active session card in the sidebar to open the **Session Deep-Dive Workspace** at the bottom.
+2. Look at the live graphs showing key flight times, SHAP-lite features, and mouse paths.
+3. If an alert is active, click **Force Freeze** to manually suspend the session (moving it to the **Frozen Sessions** tab with a score of 99.0).
+4. If an alert was a false positive, click **Dismiss** (or **Unfreeze** on a frozen card) to restore user access (resetting the score back to `15.0` with a green `✓ Cleared` badge).
+
+---
+
+## 🔍 Troubleshooting Guide
+
+Here are common issues you might experience during setup or evaluation, along with how to resolve them:
+
+### 1. `Uvicorn: [WinError 10048] Only one usage of each socket address is normally permitted`
+* **Cause**: Another application is already using port `8080` (e.g., another server or a ghost python process).
+* **Fix**:
+  * You can find and kill the process using port 8080:
+    * **Windows (cmd)**:
+      ```cmd
+      netstat -ano | findstr 8080
+      taskkill /F /PID <PID_NUMBER>
+      ```
+  * Alternatively, run the app on a different port by editing `app.py` or launching uvicorn manually:
+    ```bash
+    python -m uvicorn app:app --port 8090
+    ```
+
+### 2. Browser console shows `WebSocket connection to ws://... failed`
+* **Cause**: The browser is blocking the WebSocket or the server port was changed, causing a mismatch.
+* **Fix**: Ensure your dashboard is hitting the exact port python is running on. Reload the page. The dashboard has auto-reconnection logic and should hook back up in 5 seconds.
+
+### 3. Country flag emojis show up as letters (e.g. `IN` or `US`) on Windows
+* **Cause**: Windows OS does not natively support flag emojis in default system fonts.
+* **Resolution**: We have integrated **FlagCDN** graphic support in `dashboard.js`. If you see letter codes, perform a **Hard Refresh** (`Ctrl + F5`) to force the browser to load the latest flag image rendering script.
+
+### 4. Database Lock Error (`sqlite3.OperationalError: database is locked`)
+* **Cause**: Two processes are trying to write to `TRUSTLAYER.db` simultaneously.
+* **Fix**: Close any duplicate terminal windows running python scripts. Ensure only one `app.py` server process is active.
+
+### 5. `ModuleNotFoundError: No module named '...'`
+* **Cause**: Python is running outside the virtual environment where dependencies were installed.
+* **Fix**: Ensure you have activated your virtual environment (you should see `(venv)` prefixed in your terminal prompt) before running scripts.
+
+### 6. Python Version Mismatch & Library Installation Issues
+* **Cause**: The evaluator's PC is running an unsupported Python version (such as Python 3.12+), which causes dependency installation failures (due to missing pre-compiled binary wheels) or model loading crashes (`pickle.UnpicklingError`).
+* **Fix (Step-by-Step)**:
+  1. Check which Python version your virtual environment is using:
+     ```powershell
+     # In PowerShell / CMD
+     venv\Scripts\python --version
+     ```
+     *If it says Python 3.12.x or 3.13.x, that is the root cause.*
+  2. Install a supported Python version globally:
+     * Download and install **Python 3.11** (or 3.10) from the official [python.org](https://www.python.org/downloads/) website.
+     * **IMPORTANT**: Make sure to check the box **"Add Python to PATH"** during the installation setup.
+  3. Recreate your virtual environment using Python 3.11:
+     ```powershell
+     # Deactivate and remove the old environment
+     deactivate
+     rmdir venv /s /q
+
+     # Create a new virtual environment bound to Python 3.11
+     py -3.11 -m venv venv
+     
+     # Activate the new environment
+     venv\Scripts\activate
+     ```
+  4. Upgrade pip and re-install all project dependencies:
+     ```powershell
+     python -m pip install --upgrade pip
+     python -m pip install -r requirements.txt
+     ```
+  5. Run the application:
+     ```powershell
+     python app.py
+     ```
+

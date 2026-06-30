@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # =============================================================================
-# BehaviorShield — scripts/train_lstm_keystroke.py
+# TRUSTLAYER — scripts/train_lstm_keystroke.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # Trains an LSTM Autoencoder on the CMU Keystroke Dynamics Benchmark dataset.
@@ -576,7 +576,7 @@ def save_metadata(
 
 def main():
     print(f"\n{'='*60}")
-    print(f"  BehaviorShield — LSTM Keystroke Model Training")
+    print(f"  TRUSTLAYER — LSTM Keystroke Model Training")
     print(f"  Team {TEAM_NAME} | {HACKATHON}")
     print(f"  Device: {DEVICE}")
     if DEVICE.type == "cuda":

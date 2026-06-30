@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # =============================================================================
-# BehaviorShield — scripts/train_lstm_mouse.py
+# TRUSTLAYER — scripts/train_lstm_mouse.py
 # Team SOLARIS | Cyber Security Hackathon 2026 | MNNIT Allahabad
 # =============================================================================
 # Trains an LSTM Autoencoder on the BALABIT Mouse Dynamics dataset.
@@ -522,7 +522,7 @@ def save_metadata(
 
 def main():
     print(f"\n{'='*60}")
-    print(f"  BehaviorShield — LSTM Mouse Model Training")
+    print(f"  TRUSTLAYER — LSTM Mouse Model Training")
     print(f"  Team {TEAM_NAME} | {HACKATHON}")
     print(f"  Device: {DEVICE}")
     if DEVICE.type == "cuda":
