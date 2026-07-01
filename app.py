@@ -1353,13 +1353,13 @@ async def book_fd(req: FDRequest):
 # PASSWORD MANAGEMENT ENDPOINT
 # =============================================================================
 
-class ChangePasswordRequest(BaseModel):
+class SessionChangePasswordRequest(BaseModel):
     session_id:   str
     old_password: str
     new_password: str
 
 @app.post("/api/profile/change-password")
-async def change_password(req: ChangePasswordRequest):
+async def session_change_password(req: SessionChangePasswordRequest):
     """Change user's NetBanking password."""
     session = db.get_session(req.session_id)
     if not session:

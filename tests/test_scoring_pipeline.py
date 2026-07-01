@@ -209,3 +209,61 @@ def test_upi_blocked_under_high_risk():
         
     assert exc_info.value.status_code == 403
     assert "Transaction blocked" in exc_info.value.detail
+
+def test_session_history_endpoint():
+    """Verify that updating a session inserts records into session_history and get_session_history endpoint returns them."""
+    import asyncio
+    from app import get_session_history
+    
+    username = "history_test_user"
+    db.create_user(username)
+    session_id = db.create_session(username, "127.0.0.1", "Firefox", "fingerprint_abc")
+    
+    # Update risk to trigger insertion into session_history
+    db.update_session_risk(session_id, score=15.0, band="GREEN", breakdown={})
+    
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    res = loop.run_until_complete(get_session_history(username))
+    assert res is not None
+    assert "sessions" in res
+    assert len(res["sessions"]) > 0
+    assert res["sessions"][0]["session_id"] == session_id
+    assert res["sessions"][0]["device_class"] == "DESKTOP"
+    assert res["sessions"][0]["ip_address"] == "127.0.0.1"
+    assert res["sessions"][0]["final_score"] == 15.0
+    assert res["sessions"][0]["final_band"] == "GREEN"
+
+def test_get_transactions_with_txn_type():
+    """Verify that get_transactions correctly supports and filters by txn_type."""
+    username = "txn_test_user"
+    db.create_user(username)
+    session_id = "test_session_id_1"
+    
+    # Add a upi transaction (should return the dict payload)
+    t1 = db.add_transaction(username, session_id, "upi", 150.0, "UPI payment", "payee@upi")
+    assert t1["txn_type"] == "upi"
+    assert t1["amount"] == 150.0
+    
+    # Add a bill payment transaction
+    t2 = db.add_transaction(username, session_id, "bill_electricity", 1200.0, "Electricity bill", "electricity_board")
+    assert t2["txn_type"] == "bill_electricity"
+    assert t2["amount"] == 1200.0
+    
+    # Query all
+    all_txns = db.get_transactions(username)
+    assert len(all_txns) == 2
+    
+    # Query upi only
+    upi_txns = db.get_transactions(username, txn_type="upi")
+    assert len(upi_txns) == 1
+    assert upi_txns[0]["txn_type"] == "upi"
+    
+    # Query bill only (wildcard startswith match)
+    bill_txns = db.get_transactions(username, txn_type="bill")
+    assert len(bill_txns) == 1
+    assert bill_txns[0]["txn_type"] == "bill_electricity"

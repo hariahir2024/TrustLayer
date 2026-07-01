@@ -188,8 +188,15 @@ Sovereign banking software must treat security and privacy as first-class citize
    * Analysts in the SOC dashboard triage alerts under secure, hashed identifiers (e.g. `SUB-HAR-262F` instead of displaying raw customer names). This prevents exposing personally identifiable information (PII) to operational personnel.
 2. **Client-Side Telemetry Scrubbing**:
    * The SDK collects event timestamps (key press up and down transitions) in milliseconds. It does **not** collect character keys or text input. Passwords and transactional data are never captured, preventing keylogger-style data exposure.
-3. **Out-of-Band Step-Up Enforcement**:
-   * If a session risk index hits Amber High ($> 70$), the transaction pipeline restricts fund transfers. The server locks the active session state locally, requiring multi-factor SMS OTP verification before unlocking.
+3. **Advanced Cryptographic Hardening**:
+   * **PBKDF2-SHA256 Password Hashing**: Replaced legacy hashes with a secure key-derivation function running **100,000 iterations** with a cryptographically secure 16-byte random salt, fully protecting database credentials against offline brute-force attacks.
+   * **Anti-Replay Telemetry Protection**: All client telemetry payloads contain a cryptographically secure UUID `nonce` and a timestamp. The backend verifies timestamp freshness (within a 2-minute delta) and tracks used nonces in an in-memory TTL cache to reject replay attempts.
+   * **CORS Origin Whitelisting**: Restricted backend requests to a strict, trusted origin whitelist (`http://localhost:8080` and corresponding dev environments) rather than using a permissive wildcard (*).
+4. **Adaptive Defense & IP Rate-Limiting**:
+   * **Sliding Window Rate-Limiter**: Implemented a server-side sliding window rate limiter restricting login requests to 5 per minute per IP address.
+   * **Automatic IP Blocking**: Automated IP blocking kicks in for persistent bot signatures, rejecting traffic before executing resource-intensive operations.
+5. **Multi-Channel Risk Gating**:
+   * Standard transfers and UPI payments share a unified transaction security manager. High-risk sessions ($\ge$ 71 / RED_LOW) trigger transaction blocks at ₹10,000, AMBER_HIGH triggers step-up OTP verification at ₹5,000, and RED_HIGH/RED_CRITICAL triggers immediate full-session lockout.
 
 ---
 

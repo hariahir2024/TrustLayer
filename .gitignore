@@ -1,17 +1,63 @@
-# BehaviorShield — .gitignore
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
 __pycache__/
 *.py[cod]
 *.pyo
-.env
-datasets/
-*.log
-.DS_Store
-Thumbs.db
+*.pyd
+.Python
 
-# Environments
-venv/
+# Database files (fresh DB created on first run)
+TRUSTLAYER.db
+behaviorshield.db
+database.db
 
-# Local database & state files
-data/
+# User behavioral profiles (generated at runtime)
 profiles/
+profiles_test/
 
+# Raw research datasets (large files, not needed to run)
+datasets/
+data/
+datasets_OO.zip
+
+# Reference documents
+biocatch documents/
+
+# Old/redundant model files (only xgboost_fusion.pkl is active)
+models/xgboost_fusion_intersubject.pkl
+models/xgboost_fusion_retrained.pkl
+models/test_owner_profile_*.pt
+models/takeover_user_*.pt
+models/verify_test_user_*.pt
+models/.gitkeep
+
+# Old database module (replaced by db_sqlite.py)
+database.py
+
+# Internal development notes
+CBI_Hackathon_Demo_Video_Guide.md
+CBI_Hackathon_Presentation_Deck.md
+CBI_Hackathon_Professor_Briefing.md
+CBI_Hackathon_Technical_Documentation.md
+detailed proposal for the cbi hackathon.pdf
+
+# Build artifacts
+scripts/retrain_results_kmt.txt
+
+# IDE and OS files
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+uvicorn.log
+
+# Pytest
+.pytest_cache/

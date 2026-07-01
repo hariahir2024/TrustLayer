@@ -1,7 +1,7 @@
 {
   "name": "Bharat Suraksha Bank",
   "short_name": "BSB NetBanking",
-  "description": "Bharat Suraksha Bank — AI-powered behavioral biometric internet banking",
+  "description": "Bharat Suraksha Bank — Secured by TrustLayer AI Behavioral Biometric Authentication",
   "start_url": "/bank",
   "scope": "/",
   "display": "standalone",

@@ -12,7 +12,13 @@ Digital banking security is at an architectural crossroads. Traditional security
 
 **TRUSTLAYER** addresses this point-of-entry security bias by introducing **Continuous AI Behavioral Biometric Authentication**. Operating silently in the background, our solution captures millisecond-level keystroke rhythm metrics and sub-pixel mouse trajectory dynamics. Using a multi-tiered anomaly detection framework (Z-Score profiling, Isolation Forest classifiers, and XGBoost fusion models), TRUSTLAYER continuously scores session risk (0-100) and implements real-time adaptive friction (Green, Amber, Red). 
 
-This document provides a detailed overview of the system's current capabilities, research justification, and a structured engineering roadmap of features under active development for the final hackathon showcase.
+Beyond state-of-the-art machine learning models, the TRUSTLAYER prototype is hardened to production standards, implementing:
+* **Cryptographic Hardening**: Saluted **PBKDF2-SHA256 password hashing** (100,000 iterations) to secure stored credentials.
+* **Anti-Replay Protection**: Enforced client-side cryptographic nonces (UUIDs) and timestamp freshness checks at the API layer.
+* **Unified Risk-Gating**: Dynamic transaction restrictions (₹5,000 soft limit requiring step-up/OTP, ₹10,000 hard block) for both standard transfers and instant **UPI payment channels** (securing India's #1 banking fraud vector).
+* **Network & IP Defense**: Sliding window login rate-limiting (5 requests/min per IP) and progressive bot IP blocking.
+
+This document provides a detailed overview of the system's capabilities, research justification, and a structured engineering roadmap of features under active development for the final hackathon showcase.
 
 ---
 

@@ -143,18 +143,23 @@
 
 ---
 
-## Slide 11: Security, Privacy, & Compliance
-* **Slide Title**: Privacy-First Design & GDPR Compliance
-* **Visuals**: Icon graphic showing Hashed Identifiers, Encrypted Timings, and GDPR Compliance seal.
+## Slide 11: Security, Hardening & Compliance
+* **Slide Title**: Enterprise-Grade Hardening & Privacy-First Design
+* **Visuals**: Icon graphic showing Cryptographic Hashing, Anti-Replay Tokens, and CORS/Rate Limits.
 * **Bullet Points**:
   * **GDPR-Compliant Pseudonymization**:
     * Displays masked Subject IDs (e.g., `SUB-HAR-262F`) in the SOC dashboard to protect customer PII.
   * **Zero Character Ingestion**:
     * Only timing differentials are captured; no keyboard characters or password keys are transmitted.
-  * **Local In-Memory SQLite Store**:
-    * Secure, localized data management with clean data cleaning policies.
+  * **Advanced Cryptographic Hardening**:
+    * **PBKDF2-SHA256 password hashing** (100,000 iterations) secures user accounts.
+    * Client-side **cryptographic nonces (UUIDs)** and timestamp checks prevent replay attacks.
+  * **Infrastructure Protections**:
+    * CORS origin-limiting whitelist, sliding window login rate-limiter, and bot IP auto-blocking.
+  * **Unified UPI Risk Gating**:
+    * Secures India's #1 fraud channel (UPI payments) using behavioral thresholds (₹5,000 step-up/OTP, ₹10,000 block, full RED lock).
 * **Speaker Notes**:
-  *"Security software must respect customer privacy. TRUSTLAYER only measures timing differentials in milliseconds; it never logs actual keys or passwords. Furthermore, user names are pseudonymized as Subject IDs in the dashboard. This ensures gdpr compliance."*
+  *"Security software must be hardened to production standards. In this phase, we completed cryptographic upgrades: we implemented PBKDF2-SHA256 salted password hashing, anti-replay telemetry nonces, and IP rate limiting. We also brought the UPI instant payment channel under the same risk-gating controls as standard transfers, securing India's primary fraud channel. All of this runs without compromising PII or capturing text characters."*
 
 ---
 

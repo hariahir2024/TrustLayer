@@ -192,6 +192,21 @@ def init_db(db_path: Optional[str] = None):
     );
     """)
     
+    # 9. Session history table (for persistent user analysis lookup)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS session_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT UNIQUE,
+        username TEXT,
+        device_class TEXT,
+        ip_address TEXT,
+        final_score REAL,
+        final_band TEXT,
+        is_intruder INTEGER DEFAULT 0,
+        created_at REAL
+    );
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -799,6 +814,23 @@ def update_session_risk(
     WHERE session_id = ?
     """, (round(score, 1), band, time.time(), json.dumps(history), json.dumps(breakdown), session_id))
     
+    # Mirror results into session_history for historical lookups
+    is_intruder_flag = 1 if band.startswith("RED") or session.get("is_intruder", 0) else 0
+    cursor.execute("""
+    INSERT OR REPLACE INTO session_history 
+    (session_id, username, device_class, ip_address, final_score, final_band, is_intruder, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        session_id,
+        session["username"],
+        session["device_class"],
+        session["ip_address"],
+        round(score, 1),
+        band,
+        is_intruder_flag,
+        session["created_at"]
+    ))
+    
     conn.commit()
     conn.close()
 
@@ -975,7 +1007,7 @@ def get_session_risk_history(session_id: str) -> list:
 # =============================================================================
 
 def add_transaction(username: str, session_id: str, txn_type: str, amount: float,
-                    description: str, beneficiary: str, status: str = "success", risk_score: float = 0.0) -> None:
+                    description: str, beneficiary: str, status: str = "success", risk_score: float = 0.0) -> dict:
     """Log a transaction record in the ledger."""
     conn = _get_conn()
     cursor = conn.cursor()
@@ -984,21 +1016,33 @@ def add_transaction(username: str, session_id: str, txn_type: str, amount: float
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (username, session_id, txn_type, amount, description, beneficiary, status, risk_score, time.time()))
     
+    txn_id = cursor.lastrowid
+    
     # Deduct balance if successful debit
-    if status == "success" and txn_type in ("debit", "transfer", "bill", "upi"):
+    if status == "success" and (txn_type in ("debit", "transfer", "bill", "upi") or txn_type.startswith("bill_")):
         cursor.execute("UPDATE users SET balance = balance - ? WHERE username = ?", (amount, username))
         
     conn.commit()
+    
+    cursor.execute("SELECT * FROM transactions WHERE id = ?", (txn_id,))
+    row = cursor.fetchone()
     conn.close()
+    return dict(row) if row else {}
 
-def get_transactions(username: str, limit: int = 20) -> list:
+def get_transactions(username: str, limit: int = 20, txn_type: str = None) -> list:
     """Fetch user's transaction ledger history."""
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT * FROM transactions WHERE username = ? 
-    ORDER BY created_at DESC LIMIT ?
-    """, (username, limit))
+    if txn_type:
+        cursor.execute("""
+        SELECT * FROM transactions WHERE username = ? AND txn_type LIKE ?
+        ORDER BY created_at DESC LIMIT ?
+        """, (username, f"{txn_type}%", limit))
+    else:
+        cursor.execute("""
+        SELECT * FROM transactions WHERE username = ? 
+        ORDER BY created_at DESC LIMIT ?
+        """, (username, limit))
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
