@@ -10,7 +10,7 @@
 const TRUSTLAYER = (function() {
     // Configuration
     const CONFIG = {
-        DEFAULT_INTERVAL_MS: 30000, // 30 seconds (Green)
+        DEFAULT_INTERVAL_MS: 15000, // 15 seconds (Green)
         AMBER_LOW_INTERVAL_MS: 10000, // 10 seconds (Amber Low)
         API_SCORE_URL: '/api/score',
         PASSPHRASE_LENGTH: 11   // dynamic formula: First4 + Last4 + @ + YY = 11 chars
@@ -329,7 +329,7 @@ const TRUSTLAYER = (function() {
             }
 
             // Dynamically adjust polling interval
-            const serverIntervalMs = (data.scoring_interval || 30) * 1000;
+            const serverIntervalMs = (data.scoring_interval || 15) * 1000;
             if (serverIntervalMs !== currentIntervalMs) {
                 console.log(`[TRUSTLAYER] Interval adjusted to ${serverIntervalMs / 1000}s`);
                 currentIntervalMs = serverIntervalMs;

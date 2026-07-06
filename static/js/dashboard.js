@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // State
     let activeTab = 'monitor';
     let selectedSessionId = null;
+    const sessionLastBands = {};
+    const sessionSoundSilenced = {};
     let ws = null;
     let keystrokeChart = null;
     let overviewTrendChart = null;
@@ -20,6 +22,81 @@ document.addEventListener('DOMContentLoaded', function() {
     let featureImportanceChart = null;
     let sessionRiskTrendChart = null;
     let searchQuery = '';
+
+    // ── Shared Audio Context (unlocked by user click) ─────────────
+    let _audioCtx = null;
+    let _audioEnabled = false;
+
+    function enableAudioAlerts() {
+        try {
+            if (_audioEnabled) {
+                _audioEnabled = false;
+                const btn = document.getElementById('btn-enable-alerts');
+                const lbl = document.getElementById('alert-btn-label');
+                if (btn) {
+                    btn.style.background = 'rgba(250,204,21,0.12)';
+                    btn.style.borderColor = '#facc15';
+                    btn.style.color = '#facc15';
+                }
+                if (lbl) lbl.textContent = '🔇 Alerts Silenced';
+            } else {
+                if (!_audioCtx) {
+                    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (_audioCtx.state === 'suspended') {
+                    _audioCtx.resume();
+                }
+                _audioEnabled = true;
+                const btn = document.getElementById('btn-enable-alerts');
+                const lbl = document.getElementById('alert-btn-label');
+                if (btn) {
+                    btn.style.background = 'rgba(34,197,94,0.15)';
+                    btn.style.borderColor = '#22c55e';
+                    btn.style.color = '#22c55e';
+                }
+                if (lbl) lbl.textContent = '🔔 Alerts Active';
+                // Play a quick confirmation beep so the user knows it worked
+                playThreatSound();
+            }
+        } catch (err) {
+            console.warn('Could not toggle audio alerts:', err);
+        }
+    }
+    // Expose globally so the HTML onclick can reach it
+    window.enableAudioAlerts = enableAudioAlerts;
+
+    function playThreatSound() {
+        if (!_audioEnabled || !_audioCtx) return;
+        try {
+            if (_audioCtx.state === 'suspended') _audioCtx.resume();
+
+            // First beep — high pitch (880 Hz)
+            const osc1 = _audioCtx.createOscillator();
+            const gain1 = _audioCtx.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(880, _audioCtx.currentTime);
+            gain1.gain.setValueAtTime(0.2, _audioCtx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.18);
+            osc1.connect(gain1);
+            gain1.connect(_audioCtx.destination);
+            osc1.start(_audioCtx.currentTime);
+            osc1.stop(_audioCtx.currentTime + 0.2);
+
+            // Second beep — lower pitch (587 Hz), delayed 150ms
+            const osc2 = _audioCtx.createOscillator();
+            const gain2 = _audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(587.33, _audioCtx.currentTime + 0.15);
+            gain2.gain.setValueAtTime(0.2, _audioCtx.currentTime + 0.15);
+            gain2.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + 0.42);
+            osc2.connect(gain2);
+            gain2.connect(_audioCtx.destination);
+            osc2.start(_audioCtx.currentTime + 0.15);
+            osc2.stop(_audioCtx.currentTime + 0.45);
+        } catch (err) {
+            console.warn('Audio playback failed:', err);
+        }
+    }
 
     function fmtScore(val, sessionCount) {
         // Show N/A for neutral 50.0 scores during cold start (< 3 sessions)
@@ -334,6 +411,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     details: { score: evt.score, keystroke: evt.keystroke_score, mouse: evt.mouse_score }
                 });
 
+                // Play threat sound if score enters RED bands and has not been acknowledged/deep-dived
+                const isRed = evt.band && (evt.band.startsWith('RED') || evt.is_bot);
+                const prevBand = sessionLastBands[evt.session_id] || 'GREEN';
+                const newBand = evt.band || 'GREEN';
+                sessionLastBands[evt.session_id] = newBand;
+
+                if (!isRed) {
+                    sessionSoundSilenced[evt.session_id] = false;
+                } else {
+                    const isOpened = (selectedSessionId === evt.session_id);
+                    if (isOpened) {
+                        sessionSoundSilenced[evt.session_id] = true;
+                    } else {
+                        // Play sound if not already silenced or if it just transitioned back to RED
+                        if (!prevBand.startsWith('RED') || !sessionSoundSilenced[evt.session_id]) {
+                            playThreatSound();
+                        }
+                    }
+                }
+
                 // If selected session matches, update deep-dive
                 if (selectedSessionId && (evt.session_id === selectedSessionId || selectedSessionId.startsWith(evt.session_id.substring(0, 8)))) {
                     updateDeepDiveWorkspace(evt);
@@ -417,7 +514,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function createSessionCard(s) {
-        const isTerminated = s.status === 'terminated';
+        const isTerminated = ['terminated', 'red_low', 'red_high', 'red_critical'].includes(s.status);
         const card = document.createElement('div');
         card.id = `card-${s.session_id}`;
         const isBotCrit = (s.band === 'RED_CRITICAL' && s.risk_score >= 97);
@@ -594,6 +691,7 @@ document.addEventListener('DOMContentLoaded', function() {
             ip_address: s.ip_address || '127.0.0.1'
         };
         const card = createSessionCard(formatted);
+        card.classList.add('pulse-pop');
         elements.sessionTableBody.appendChild(card);
         fetchSessions(); // refresh stats and charts
     }
@@ -603,6 +701,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const existingCard = document.getElementById(cardId);
         
         if (existingCard) {
+            // If the session has escalated to RED, remove it from active sessions list immediately
+            if (s.band && s.band.startsWith('RED')) {
+                existingCard.remove();
+                fetchSessions();
+                fetchFrozenSessions();
+                return;
+            }
+
             let existingIP = '127.0.0.1';
             const ipEl = existingCard.querySelector('.alert-card-body span[style*="opacity: 0.85"]');
             if (ipEl) existingIP = ipEl.textContent.trim();
@@ -875,6 +981,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (selectedCard) selectedCard.classList.add('selected');
 
         selectedSessionId = fullId;
+        sessionSoundSilenced[fullId] = true;
         
         elements.ddEmpty.classList.add('hidden');
         elements.ddWorkspace.classList.remove('hidden');
@@ -933,7 +1040,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 applyBadgeColor(elements.ddRiskBadge, sessionData.band);
 
                 // Toggle Freeze / Unfreeze override button state
-                const isFrozen = sessionData.status === 'red_high';
+                const isFrozen = ['terminated', 'red_low', 'red_high', 'red_critical'].includes(sessionData.status);
                 if (elements.btnFreeze) {
                     if (isFrozen) {
                         elements.btnFreeze.innerHTML = '<i class="ti ti-check"></i> Unfreeze Session';
@@ -979,7 +1086,7 @@ document.addEventListener('DOMContentLoaded', function() {
         applyBadgeColor(elements.ddRiskBadge, evt.band);
 
         // Toggle Freeze / Unfreeze override button state
-        const isFrozen = evt.status === 'red_high';
+        const isFrozen = ['terminated', 'red_low', 'red_high', 'red_critical'].includes(evt.status);
         if (elements.btnFreeze) {
             if (isFrozen) {
                 elements.btnFreeze.innerHTML = '<i class="ti ti-check"></i> Unfreeze Session';
@@ -1521,16 +1628,86 @@ document.addEventListener('DOMContentLoaded', function() {
     async function fetchDataCollectionSummary() {
         const container = document.getElementById('data-collection-panel-content');
         if (!container) return;
-        container.innerHTML = '<p style="color:#94a3b8;font-size:12px;">Loading...</p>';
+        
+        // Show loading indicator only if container is empty
+        if (!container.innerHTML || container.innerHTML.trim() === '' || container.innerHTML.includes('No users yet')) {
+            container.innerHTML = '<p style="color:#94a3b8;font-size:12px;">Loading...</p>';
+        }
+
+        const btn = document.getElementById('btn-refresh-data-collection');
+        let origHtml = '↻ Refresh';
+        if (btn) {
+            btn.disabled = true;
+            origHtml = btn.innerHTML;
+            btn.innerHTML = '⏳ Refreshing...';
+        }
 
         try {
             const res = await fetch('/api/admin/data-collection-summary');
             const data = await res.json();
+            
+            // Add a small 200ms delay to make the refresh action feel solid/perceptible
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
             renderDataCollectionSummary(data, container);
         } catch (err) {
-            container.innerHTML = '<p style="color:#ef4444;font-size:12px;">Failed to load summary</p>';
+            if (container.innerHTML.includes('Loading...')) {
+                container.innerHTML = '<p style="color:#ef4444;font-size:12px;">Failed to load summary</p>';
+            } else {
+                showToast("Failed to refresh data collection summary", "error");
+            }
+        } finally {
+            const newBtn = document.getElementById('btn-refresh-data-collection');
+            if (newBtn) {
+                newBtn.disabled = false;
+                newBtn.innerHTML = origHtml;
+            }
         }
     }
+
+    async function triggerXGBoostRetraining(force = false) {
+        const btn = document.getElementById('btn-trigger-retrain');
+        const forceBtn = document.getElementById('btn-force-retrain');
+        
+        const origText = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="ti ti-loader" style="display:inline-block;animation: spin 1s linear infinite;margin-right:4px;"></i> Retraining...';
+        }
+        if (forceBtn) forceBtn.disabled = true;
+        
+        try {
+            const response = await fetch(`/api/admin/retrain?force=${force}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                const r = data.report;
+                showToast(`Retraining successful! Accuracy: ${(r.accuracy*100).toFixed(1)}%`, 'success');
+                alert(`XGBoost Retraining Complete!\n\nMetrics:\n- Accuracy: ${(r.accuracy*100).toFixed(1)}%\n- Recall: ${(r.recall*100).toFixed(1)}%\n- Precision: ${(r.precision*100).toFixed(1)}%\n- F1 Score: ${(r.f1*100).toFixed(1)}%\n- Real session samples: ${r.real_samples}\n- Labeled intruders: ${r.intruder_sessions}\n\nNewly retrained model reloaded and active on server!`);
+                fetchDataCollectionSummary();
+                // Also refresh main screen stats to update charts / weights
+                fetchStats();
+                fetchSessions();
+            } else {
+                showToast(data.detail || "Retraining failed", 'error');
+                alert(`Retraining Failed:\n\n${data.detail || "Unknown error"}`);
+            }
+        } catch (e) {
+            showToast("Error contacting retraining API", 'error');
+            alert("Error contacting retraining API.");
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+            if (forceBtn) forceBtn.disabled = false;
+        }
+    }
+
+    window.fetchDataCollectionSummary = fetchDataCollectionSummary;
+    window.triggerXGBoostRetraining = triggerXGBoostRetraining;
 
     function renderDataCollectionSummary(data, container) {
         const totals = data.totals || {};
@@ -1582,15 +1759,30 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
 
-            <!-- Retraining readiness -->
-            <div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;
+            <!-- Retraining readiness & action buttons -->
+            <div style="margin-bottom:16px;padding:12px 14px;border-radius:8px;
                         background:rgba(${totals.ready_for_retraining ? '34,197,94' : '245,158,11'},0.08);
                         border:1px solid rgba(${totals.ready_for_retraining ? '34,197,94' : '245,158,11'},0.25);
                         font-size:12px;color:${readyColor};">
-                ${readyText}
-                ${totals.ready_for_retraining
-                    ? '<br><span style="color:#94a3b8;font-size:10px;">Run: python scripts/retrain_xgb_augmented.py</span>'
-                    : ''}
+                <div style="font-weight:600;margin-bottom:4px;">${readyText}</div>
+                <span style="color:#94a3b8;font-size:10px;">
+                    Retraining integrates user telemetry patterns from the SQLite database to update decision boundaries.
+                </span>
+                <div style="margin-top:12px;display:flex;gap:10px;">
+                    <button id="btn-trigger-retrain" onclick="triggerXGBoostRetraining()" 
+                            style="padding:8px 16px;background:var(--cyan);border:none;color:#000;
+                                   font-weight:700;border-radius:6px;font-size:11px;cursor:pointer;
+                                   display:inline-flex;align-items:center;gap:6px;transition:opacity 0.2s;">
+                        <i class="ti ti-bolt"></i> Retrain XGBoost Classifier
+                    </button>
+                    ${totals.ready_for_retraining ? '' : `
+                    <button id="btn-force-retrain" onclick="triggerXGBoostRetraining(true)" 
+                            style="padding:8px 16px;background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);
+                                   color:#fbbf24;font-weight:600;border-radius:6px;font-size:11px;cursor:pointer;transition:background 0.2s;">
+                        ⚡ Force Retrain (Demo Mode)
+                    </button>
+                    `}
+                </div>
             </div>
 
             <!-- User table -->
@@ -1606,7 +1798,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </thead>
                 <tbody>${rows || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#475569;">No users yet</td></tr>'}</tbody>
             </table>
-            <button onclick="fetchDataCollectionSummary()"
+            <button id="btn-refresh-data-collection" onclick="fetchDataCollectionSummary()"
                 style="margin-top:12px;padding:6px 14px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);
                        color:#a5b4fc;border-radius:6px;font-size:11px;cursor:pointer;">
                 ↻ Refresh
@@ -2114,7 +2306,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 sessions.forEach(s => {
                     const dateObj = new Date(s.created_at * 1000);
                     const dateStr = `${dateObj.toLocaleDateString()} ${dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-                    const isTerminated = s.status === 'terminated';
+                    const isTerminated = ['terminated', 'red_low', 'red_high', 'red_critical'].includes(s.status);
                     
                     // Device browser mapping short name
                     let device = 'Browser';

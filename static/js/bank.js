@@ -165,6 +165,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Monitor input elements with SDK
     TRUSTLAYER.monitorInput(inputs.enroll);
     TRUSTLAYER.monitorInput(inputs.loginPass);
+    TRUSTLAYER.monitorInput(inputs.username);
     TRUSTLAYER.monitorInput(inputs.challenge);
     TRUSTLAYER.monitorInput(inputs.txAmount);
     TRUSTLAYER.monitorInput(inputs.txDesc);
@@ -474,6 +475,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         currentUsername = username;
         
+        const usernameKeys = TRUSTLAYER.extractKeyEvents();
+
         try {
             const response = await fetch('/api/login', {
                 method: 'POST',
@@ -482,13 +485,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     username: currentUsername,
                     password: password,
                     key_events: [],
+                    username_key_events: usernameKeys,
                     device_info: TRUSTLAYER.getDeviceFingerprint()
                 })
             });
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                alert(errData.detail || "Invalid username or password.");
+                if (response.status === 423) {
+                    alert(errData.detail || "Account temporarily locked due to too many failed attempts.");
+                } else {
+                    alert(errData.detail || "Invalid username or password.");
+                }
                 return;
             }
 
@@ -685,7 +693,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    buttons.enrollCancel.addEventListener('click', () => showView('username'));
+    buttons.enrollCancel.addEventListener('click', () => {
+        if (sessionId) {
+            fetch(`/api/session/terminate/${sessionId}`, { method: 'POST' }).catch(() => {});
+            sessionId = null;
+        }
+        showView('username');
+    });
 
     function initializeMouseCalibration() {
         const area = document.getElementById('mouse-path-area');
@@ -873,9 +887,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Show success and proceed
+        // Show success and terminate the enrollment session before redirecting
         const successDiv = document.getElementById('calibration-success-msg');
         if (successDiv) successDiv.textContent = '✓ Biometric profile registered. Redirecting to login...';
+        if (sessionId) {
+            fetch(`/api/session/terminate/${sessionId}`, { method: 'POST' }).catch(() => {});
+            sessionId = null;
+        }
         setTimeout(() => showView('username'), 1200);
     });
 
@@ -922,7 +940,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
 
             if (!response.ok) {
-                alert("Login failed.");
+                const errData = await response.json().catch(() => ({}));
+                if (response.status === 423) {
+                    alert(errData.detail || "Account temporarily locked due to too many failed attempts.");
+                } else {
+                    alert(errData.detail || "Login failed: Invalid behavioral signature.");
+                }
+                inputs.loginPass.value = "";
                 return;
             }
 
@@ -941,7 +965,7 @@ document.addEventListener('DOMContentLoaded', function() {
             loadUserDatabase();
             
             TRUSTLAYER.init(sessionId, currentUsername);
-            updateRiskMetrics(data.score, data.band, 30);
+            updateRiskMetrics(data.score, data.band, data.scoring_interval || 15);
             
             showView('portal');
             console.log("[BSB] Logged in successfully. Session:", sessionId);
@@ -953,6 +977,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     buttons.logout.addEventListener('click', function() {
+        if (sessionId) {
+            fetch(`/api/session/terminate/${sessionId}`, { method: 'POST' }).catch(() => {});
+        }
         TRUSTLAYER.destroy();
         sessionId = null;
         currentUsername = "";
@@ -995,7 +1022,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
         const sessionCheck = await sessionCheckRes.json();
-        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+        if (!sessionCheck.advisory_mode && (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED'))) {
             showFreezeOverlay();
             return;
         }
@@ -1248,7 +1275,38 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    function processSuccessfulTransaction() {
+    async function processSuccessfulTransaction() {
+        if (currentTransactionPayload && currentTransactionPayload.action_type === 'upi') {
+            // Process verified UPI payment
+            try {
+                const response = await fetch('/api/upi', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        upi_id: currentTransactionPayload.upi_id,
+                        amount: currentTransactionPayload.amount,
+                        note: currentTransactionPayload.note || ""
+                    })
+                });
+                const data = await response.json();
+                if (response.ok && data.success) {
+                    userSavingsBalance = data.new_balance;
+                    updateBalanceDisplays();
+                    alert(`UPI transfer of ₹${currentTransactionPayload.amount} to ${currentTransactionPayload.upi_id} successful!`);
+                    inputs.upiVpa.value = "";
+                    inputs.upiAmount.value = "";
+                    fetchTransactionsFromServer();
+                    switchBankTab('dashboard');
+                } else {
+                    alert(data.detail || "UPI transfer failed.");
+                }
+            } catch (e) {
+                alert("Error processing UPI transfer.");
+            }
+            return;
+        }
+
         alert("Transaction processed successfully!");
         
         const payeeObj = userPayees[parseInt(inputs.txPayeeSelect.value)];
@@ -1327,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
         const sessionCheck = await sessionCheckRes.json();
-        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+        if (!sessionCheck.advisory_mode && (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED'))) {
             overlays.freeze.classList.remove('hidden');
             return;
         }
@@ -1386,6 +1444,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        currentTransactionPayload = {
+            session_id: sessionId,
+            action_type: 'upi',
+            upi_id: vpa,
+            amount: amount,
+            note: ""
+        };
+
         // Register action
         await fetch('/api/action', {
             method: 'POST',
@@ -1399,38 +1465,51 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
         const sessionCheck = await sessionCheckRes.json();
-        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+        if (!sessionCheck.advisory_mode && (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED'))) {
             overlays.freeze.classList.remove('hidden');
             return;
         }
 
-        // Proceed to UPI API
+        // Proceed to UPI check
+        sendUpiRequest();
+    });
+
+    async function sendUpiRequest() {
         try {
             const response = await fetch('/api/upi', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     session_id: sessionId,
-                    upi_id: vpa,
-                    amount: amount
+                    upi_id: currentTransactionPayload.upi_id,
+                    amount: currentTransactionPayload.amount
                 })
             });
 
             const data = await response.json();
-            if (response.ok && data.success) {
-                userSavingsBalance = data.new_balance;
-                updateBalanceDisplays();
-                alert(`UPI transfer of ₹${amount} to ${vpa} successful!`);
-                inputs.upiVpa.value = "";
-                inputs.upiAmount.value = "";
-                fetchTransactionsFromServer();
+
+            if (response.ok) {
+                if (data.requires_verification) {
+                    showOtpModal();
+                } else if (data.success) {
+                    userSavingsBalance = data.new_balance;
+                    updateBalanceDisplays();
+                    alert(`UPI transfer of ₹${currentTransactionPayload.amount} to ${currentTransactionPayload.upi_id} successful!`);
+                    inputs.upiVpa.value = "";
+                    inputs.upiAmount.value = "";
+                    fetchTransactionsFromServer();
+                    switchBankTab('dashboard');
+                } else {
+                    alert(data.message || "UPI transfer failed.");
+                }
             } else {
-                alert(data.detail || "UPI transfer failed.");
+                alert(data.detail || "UPI transfer failed due to elevated risk.");
             }
         } catch (e) {
+            console.error("UPI Error:", e);
             alert("Error processing UPI transfer.");
         }
-    });
+    }
 
     // ==========================================
     // FIXED DEPOSITS HANDLER
@@ -1487,7 +1566,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
         const sessionCheck = await sessionCheckRes.json();
-        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+        if (!sessionCheck.advisory_mode && (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED'))) {
             overlays.freeze.classList.remove('hidden');
             return;
         }
@@ -1549,7 +1628,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
         const sessionCheck = await sessionCheckRes.json();
-        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+        if (!sessionCheck.advisory_mode && (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED'))) {
             overlays.freeze.classList.remove('hidden');
             return;
         }
@@ -1604,7 +1683,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Check if session got frozen
         const sessionCheckRes = await fetch(`/api/session/${sessionId}`);
         const sessionCheck = await sessionCheckRes.json();
-        if (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED')) {
+        if (!sessionCheck.advisory_mode && (sessionCheck.status === 'terminated' || sessionCheck.band.startsWith('RED'))) {
             overlays.freeze.classList.remove('hidden');
             return;
         }

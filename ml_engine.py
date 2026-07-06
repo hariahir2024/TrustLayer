@@ -43,6 +43,7 @@ from constants import (
     LSTM_SEQ_LEN_KEYSTROKE, LSTM_SEQ_LEN_MOUSE,
     MODEL_KEYSTROKE_PT, MODEL_MOUSE_PT, MODEL_XGBOOST_PKL, MODEL_METADATA_JSON,
 )
+import constants as _c
 
 log = logging.getLogger("ml_engine")
 
@@ -140,13 +141,35 @@ def load_generic_baselines() -> None:
     global _generic_keystroke_baseline, _generic_mouse_model
     global _generic_keystroke_lstm, _generic_mouse_lstm, _xgb_fusion_model, _ml_metadata
 
-    log.info("Loading generic keystroke baseline from CMU dataset...")
-    _generic_keystroke_baseline = _load_cmu_baseline()
-
-    log.info("Loading generic mouse model from BALABIT dataset...")
-    _generic_mouse_model = _load_balabit_model()
-
     base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # 1. Load generic keystroke baseline (from cached json or CMU dataset)
+    cmu_cache_path = os.path.join(base_dir, "models", "cmu_keystroke_baseline.json")
+    if os.path.exists(cmu_cache_path):
+        try:
+            with open(cmu_cache_path, "r", encoding="utf-8") as f:
+                _generic_keystroke_baseline = json.load(f)
+            log.info("Generic CMU keystroke baseline loaded from cache successfully.")
+        except Exception as e:
+            log.error(f"Failed to load cached CMU baseline: {e}")
+            _generic_keystroke_baseline = _load_cmu_baseline()
+    else:
+        log.info("Loading generic keystroke baseline from CMU dataset...")
+        _generic_keystroke_baseline = _load_cmu_baseline()
+
+    # 2. Load generic mouse Isolation Forest model (from cached pkl or BALABIT dataset)
+    mouse_cache_path = os.path.join(base_dir, "models", "mouse_iso_forest_pretrained.pkl")
+    if os.path.exists(mouse_cache_path):
+        try:
+            with open(mouse_cache_path, "rb") as f:
+                _generic_mouse_model = pickle.load(f)
+            log.info("Generic BALABIT mouse model loaded from cache successfully.")
+        except Exception as e:
+            log.error(f"Failed to load cached BALABIT mouse model: {e}")
+            _generic_mouse_model = _load_balabit_model()
+    else:
+        log.info("Loading generic mouse model from BALABIT dataset...")
+        _generic_mouse_model = _load_balabit_model()
 
     # 1. Load metadata
     metadata_path = os.path.join(base_dir, MODEL_METADATA_JSON)
@@ -687,6 +710,9 @@ def extract_metadata_features(session: dict, device_fp_enrolled: str | None) -> 
     now = time.time()
     hour = int(time.strftime("%H", time.localtime(now)))
 
+    username = session.get("username", "")
+    device_class = session.get("device_class", "DESKTOP")
+
     # Session duration in seconds
     duration_sec = now - session.get("created_at", now)
     duration_min = max(duration_sec / 60, 0.01)
@@ -700,15 +726,33 @@ def extract_metadata_features(session: dict, device_fp_enrolled: str | None) -> 
     created_at   = session.get("created_at", now)
     tx_delay = (first_action - created_at) if first_action else 30.0
 
-    # Device fingerprint mismatch (binary: 0=match, 1=mismatch)
+    # Device fingerprint mismatch logic
     session_fp = session.get("device_fingerprint", "")
-    device_mismatch = 0 if (device_fp_enrolled and session_fp == device_fp_enrolled) else 1
+    if device_fp_enrolled is None:
+        device_mismatch = 0.4   # First device ever for this class — moderate suspicion
+    elif session_fp == device_fp_enrolled:
+        device_mismatch = 0.0   # Known enrolled device — fully trusted
+    else:
+        device_mismatch = 1.0   # Unknown device — full risk contribution
+
+    # Per-user time-of-day risk (or population fallback)
+    hist = db.get_user_login_hour_history(username, device_class)
+    total_logins = sum(hist.values()) if hist else 0
+    if total_logins >= 5:
+        count = hist.get(str(hour), 0)
+        frequency = count / total_logins
+        if frequency >= 0.05:
+            tod_risk = 0.0
+        else:
+            tod_risk = 15.0 * (1.0 - (frequency / 0.05))
+    else:
+        tod_risk = float(get_time_of_day_risk(hour))
 
     # Click dwell time (passed in session if SDK collects it)
     click_dwell = session.get("click_dwell_mean", 120.0)  # ms — default to human average
 
     return {
-        "time_of_day_risk":            float(get_time_of_day_risk(hour)),
+        "time_of_day_risk":            float(tod_risk),
         "device_fingerprint_match":    float(device_mismatch),
         "session_action_speed":        float(session_action_speed),
         "transaction_initiation_delay": float(tx_delay),
@@ -1554,6 +1598,15 @@ def fuse_scores(
     """
     use_xgb = (_xgb_fusion_model is not None) and (metadata_features is not None)
 
+    # Weighted-sum fallback score (used even when XGBoost is available, for blending)
+    weights = CATEGORY_WEIGHTS
+    weighted_sum_score = (
+        keystroke_score * weights["KEYSTROKE"] +
+        mouse_score     * weights["MOUSE"]     +
+        metadata_score  * weights["METADATA"]
+    )
+    weighted_sum_score = min(weighted_sum_score, 100.0)
+
     if use_xgb:
         try:
             is_enrolled = 1 if (username and db.is_enrolled(username)) else 0
@@ -1561,19 +1614,31 @@ def fuse_scores(
             vector = [keystroke_score, mouse_score, metadata_score, is_enrolled]
 
             prob_fraud = float(_xgb_fusion_model.predict_proba([vector])[0][1])
-            final_score = round(prob_fraud * 100.0, 1)
+            xgb_score  = prob_fraud * 100.0
+
+            # Smart XGBoost boosting:
+            # - When XGBoost is low-confidence (≤75%), use weighted sum as-is.
+            #   This preserves the natural AMBER zone for moderate deviations.
+            # - When XGBoost is highly confident (>75%), add a graduated push
+            #   proportional to the model's certainty. At 100% confidence, the
+            #   score is pushed towards RED_HIGH/RED_CRITICAL.
+            if prob_fraud > 0.75:
+                confidence_boost = (prob_fraud - 0.75) / 0.25   # 0→1 as prob goes 0.75→1.0
+                # Push up towards max(weighted_sum, 72) + up to 25 extra points
+                boosted_ceiling = max(weighted_sum_score, 72.0) + 25.0 * confidence_boost
+                final_score = round(min(
+                    weighted_sum_score + (boosted_ceiling - weighted_sum_score) * confidence_boost,
+                    100.0
+                ), 1)
+            else:
+                # XGBoost uncertain — trust the weighted behavioural sum
+                final_score = round(weighted_sum_score, 1)
         except Exception as e:
             log.error(f"Error in XGBoost fusion scoring: {e}. Falling back to weighted sum.")
             use_xgb = False
 
     if not use_xgb:
-        weights = CATEGORY_WEIGHTS
-        final_score = (
-            keystroke_score * weights["KEYSTROKE"] +
-            mouse_score     * weights["MOUSE"]     +
-            metadata_score  * weights["METADATA"]
-        )
-        final_score = round(min(final_score, 100.0), 1)
+        final_score = round(weighted_sum_score, 1)
 
     band = get_score_band(final_score)
 
@@ -1691,9 +1756,10 @@ def check_velocity(session_id: str, new_score: float) -> bool:
 # =============================================================================
 
 def score_session(
-    session_id:     str,
-    key_events:     list = None,
-    mouse_samples:  list = None,
+    session_id:          str,
+    key_events:          list = None,
+    mouse_samples:       list = None,
+    username_key_events: list = None,
 ) -> dict:
     """
     Main entry point called by app.py on every scoring cycle.
@@ -1717,7 +1783,9 @@ def score_session(
     }
 
     # ── Step 1: Bot detection (immediate, before ML) ──────────────
-    is_bot, bot_reason = detect_bot(key_events or [], mouse_samples or [], metadata)
+    # Combine key_events and username_key_events to check for programmatic keystrokes across BOTH fields!
+    combined_keys = (key_events or []) + (username_key_events or [])
+    is_bot, bot_reason = detect_bot(combined_keys, mouse_samples or [], metadata)
 
     if is_bot:
         db.mark_session_as_bot(session_id)
@@ -1761,7 +1829,7 @@ def score_session(
                           if mouse_samples else None)
     metadata_features  = extract_metadata_features(
         session,
-        db.get_device_fingerprint(username),
+        db.get_device_fingerprint(username, session.get("device_class", "DESKTOP")),
     )
 
     # ── Step 3: Category scoring ──────────────────────────────────
@@ -1793,15 +1861,21 @@ def score_session(
     action = _get_action(band)
 
     # Update scoring interval based on band
-    new_interval = (AMBER_LOW_SCORING_INTERVAL_SEC
-                    if band == "AMBER_LOW"
-                    else DEFAULT_SCORING_INTERVAL_SEC)
+    if band.startswith("RED"):
+        new_interval = 5  # Accelerated 5-second interval for active threats/bots
+    elif band in ("AMBER_LOW", "AMBER_MID", "AMBER_HIGH"):
+        new_interval = 10  # 10s for any amber escalation
+    else:
+        new_interval = 15  # 15s default (Green)
     db.update_scoring_interval(session_id, new_interval)
 
     # ── Step 7: Persist to database ───────────────────────────────
     db_result = {**result, "mouse_samples": mouse_samples}
     db.update_session_risk(session_id, final_score, band, db_result)
-    db.update_session_status(session_id, band.lower())
+    if _c.ADVISORY_MODE:
+        db.update_session_status(session_id, "active")
+    else:
+        db.update_session_status(session_id, band.lower())
     db.log_event(
         event_type = "SCORE_UPDATE",
         session_id = session_id,
@@ -1826,7 +1900,6 @@ def score_session(
     # ── B1: Progressive Baseline Drift ────────────────────────────
     # After every GREEN session, gently nudge the user's keystroke
     # baseline toward the current session's values.
-    import constants as _c
     device_class = session.get("device_class", "DESKTOP")
     if band == "GREEN" and keystroke_features and _c.BASELINE_DRIFT_WEIGHT > 0:
         import db_sqlite as _db_sql

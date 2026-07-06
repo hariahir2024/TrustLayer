@@ -1640,3 +1640,10 @@ body.dashboard-page {
   animation: bot-flash-anim 1s ease-in-out infinite;
 }
 
+/* Spinner Rotate Keyframe */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+

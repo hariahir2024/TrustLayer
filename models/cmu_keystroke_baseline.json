@@ -1,0 +1,36 @@
+{
+  "means": {
+    "mean_hold_time": 90.0962112299465,
+    "std_hold_time": 30.496369289378855,
+    "mean_flight_time": 181.48772390890798,
+    "std_flight_time": 224.42887227210255,
+    "typing_speed_cps": 4.837019026204845,
+    "backspace_rate": 0.05,
+    "rhythm_consistency": 1.2366063524205502,
+    "burst_ratio": 0.3,
+    "first_key_latency": 350.0,
+    "completion_time": 2580.2309705882353,
+    "digraph_pos_1_2": 181.48772390890798,
+    "digraph_pos_4_5": 208.71088249524416,
+    "digraph_pos_7_8": 172.41333771346257,
+    "digraph_pos_8_9": 226.859654886135,
+    "digraph_pos_9_10": 199.6364962997988
+  },
+  "stds": {
+    "mean_hold_time": 30.496369289378855,
+    "std_hold_time": 15.248184644689427,
+    "mean_flight_time": 224.42887227210255,
+    "std_flight_time": 112.21443613605128,
+    "typing_speed_cps": 1.5342253135447272,
+    "backspace_rate": 0.08,
+    "rhythm_consistency": 0.15,
+    "burst_ratio": 0.2,
+    "first_key_latency": 200.0,
+    "completion_time": 1140.0415473679616,
+    "digraph_pos_1_2": 224.42887227210255,
+    "digraph_pos_4_5": 246.87175949931282,
+    "digraph_pos_7_8": 224.42887227210255,
+    "digraph_pos_8_9": 269.31464672652305,
+    "digraph_pos_9_10": 224.42887227210255
+  }
+}

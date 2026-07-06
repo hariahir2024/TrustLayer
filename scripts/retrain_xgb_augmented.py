@@ -1,4 +1,4 @@
-﻿"""
+"""
 TRUSTLAYER — XGBoost Augmented Retraining Script (Stream 6C)
 Team SOLARIS | CBI Hackathon 2026
 
@@ -149,7 +149,7 @@ def _generate_synthetic_samples(n: int) -> tuple:
 # STEP 3: Combine and retrain
 # =============================================================================
 
-def retrain(real_sample_weight: float = 5.0) -> dict:
+def retrain(real_sample_weight: float = 5.0, force: bool = False, raise_on_error: bool = False) -> dict:
     """
     Retrain XGBoost using real + synthetic data.
     Real samples are weighted `real_sample_weight` times higher than synthetic.
@@ -158,22 +158,27 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
     """
     try:
         import xgboost as xgb
-    except ImportError:
+    except ImportError as e:
         log.error("XGBoost not installed. Run: pip install xgboost")
+        if raise_on_error:
+            raise e
         sys.exit(1)
 
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+    import shutil
+    from constants import MODEL_XGBOOST_PKL
 
     # ── Load data ──
     X_real, y_real = load_real_labeled_data()
     n_intruder = int(np.sum(y_real == 1))
 
-    if n_intruder < 20:
-        log.error(
-            f"Only {n_intruder} intruder sessions found. "
-            f"Need at least 20. Label more sessions via the dashboard first."
-        )
+    required_intruders = 2 if force else 20
+    if n_intruder < required_intruders:
+        msg = f"Only {n_intruder} intruder sessions found. Need at least {required_intruders} to retrain."
+        log.error(msg)
+        if raise_on_error:
+            raise ValueError(msg)
         sys.exit(1)
 
     X_syn, y_syn = load_synthetic_data("models/xgboost_fusion.pkl")
@@ -213,11 +218,18 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
 
     # ── Evaluate ──
     y_pred = model.predict(X_test)
+    
+    # Calculate specificity (TNR) = TN / (TN + FP)
+    tn = int(np.sum((y_test == 0) & (y_pred == 0)))
+    fp = int(np.sum((y_test == 0) & (y_pred == 1)))
+    specificity = round(float(tn / max(tn + fp, 1)), 4)
+    
     report = {
         "accuracy":  round(float(accuracy_score(y_test, y_pred)), 4),
         "precision": round(float(precision_score(y_test, y_pred, zero_division=0)), 4),
         "recall":    round(float(recall_score(y_test, y_pred, zero_division=0)), 4),
         "f1":        round(float(f1_score(y_test, y_pred, zero_division=0)), 4),
+        "specificity": specificity,
         "train_size": len(X_train),
         "test_size":  len(X_test),
         "real_samples": len(X_real),
@@ -226,10 +238,11 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
 
     log.info("=" * 50)
     log.info("RETRAINING RESULTS")
-    log.info(f"  Accuracy:  {report['accuracy']:.1%}")
-    log.info(f"  Precision: {report['precision']:.1%}")
-    log.info(f"  Recall:    {report['recall']:.1%}")
-    log.info(f"  F1 Score:  {report['f1']:.1%}")
+    log.info(f"  Accuracy:    {report['accuracy']:.1%}")
+    log.info(f"  Precision:   {report['precision']:.1%}")
+    log.info(f"  Recall:      {report['recall']:.1%}")
+    log.info(f"  F1 Score:    {report['f1']:.1%}")
+    log.info(f"  Specificity: {report['specificity']:.1%}")
     log.info("=" * 50)
 
     # ── Save retrained model ──
@@ -238,6 +251,41 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
     with open(output_path, "wb") as f:
         pickle.dump(model, f)
     log.info(f"Retrained model saved to: {output_path}")
+
+    # Copy retrained model to active model path
+    try:
+        shutil.copy(output_path, MODEL_XGBOOST_PKL)
+        log.info(f"Copied retrained model to active model path: {MODEL_XGBOOST_PKL}")
+        
+        # Update model_metadata.json dynamically
+        try:
+            from datetime import datetime
+            meta_path = "models/model_metadata.json"
+            if os.path.exists(meta_path):
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                if "fusion_model" not in meta:
+                    meta["fusion_model"] = {}
+                if "performance" not in meta["fusion_model"]:
+                    meta["fusion_model"]["performance"] = {}
+                
+                meta["fusion_model"]["performance"]["accuracy"] = report["accuracy"]
+                meta["fusion_model"]["performance"]["precision"] = report["precision"]
+                meta["fusion_model"]["performance"]["recall"] = report["recall"]
+                meta["fusion_model"]["performance"]["f1_score"] = report["f1"]
+                meta["fusion_model"]["performance"]["fp_suppression"] = report["specificity"]
+                meta["fusion_model"]["trained_at"] = datetime.utcnow().isoformat() + "Z"
+                
+                with open(meta_path, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, indent=2)
+                log.info(f"Successfully updated performance metrics in {meta_path}")
+        except Exception as e_meta:
+            log.error(f"Failed to update model_metadata.json file: {e_meta}")
+            
+    except Exception as e:
+        log.error(f"Failed to copy retrained model to active path: {e}")
+        if raise_on_error:
+            raise e
 
     # ── Save results report ──
     results_path = "scripts/retrain_results.txt"
@@ -249,6 +297,7 @@ def retrain(real_sample_weight: float = 5.0) -> dict:
     log.info(f"Results saved to: {results_path}")
 
     return report
+
 
 
 # =============================================================================

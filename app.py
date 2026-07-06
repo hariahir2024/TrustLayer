@@ -222,6 +222,7 @@ async def register(req: RegisterRequest):
 class LoginRequest(BaseModel):
     username:         str
     key_events:       list
+    username_key_events: Optional[list] = []
     field_focus_ts:   Optional[float] = None
     device_info:      Optional[dict]  = {}   # {user_agent, screen_width, screen_height,
                                               #  color_depth, timezone, language}
@@ -234,7 +235,7 @@ class ScoreRequest(BaseModel):
     click_dwell_mean: Optional[float] = 120.0
     webdriver_flag:   Optional[bool]  = False
     timestamp:        Optional[float] = None
-    nonce:            str
+    nonce:            Optional[str] = None
 
 class ReauthRequest(BaseModel):
     session_id:     str
@@ -319,6 +320,42 @@ def is_rate_limited(ip: str, limit: int = 5, period: int = 60) -> bool:
     LOGIN_ATTEMPTS[ip].append(now)
     return False
 
+def send_push_alert(username: str, score: float, band: str, is_bot: bool = False):
+    """Send a real-time push notification using the free ntfy.sh service."""
+    import urllib.request
+    import threading
+    topic = f"trustlayer-{username}"
+    url = f"https://ntfy.sh/{topic}"
+    title = "🚨 TrustLayer Security Alert" if (band.startswith("RED") or is_bot) else "⚠️ TrustLayer Warning"
+    message = f"Suspicious activity detected for {username}. Score: {score} ({band})."
+    if is_bot:
+        message = f"Automated bot detected trying to log in as {username}."
+    
+    headers = {
+        "Title": title,
+        "Priority": "high" if (band.startswith("RED") or is_bot) else "default",
+        "Tags": "warning,shield" if is_bot else "rotating_light,bank"
+    }
+    
+    ntfy_req = urllib.request.Request(
+        url,
+        data=message.encode("utf-8"),
+        headers=headers,
+        method="POST"
+    )
+    
+    def do_post():
+        try:
+            with urllib.request.urlopen(ntfy_req, timeout=3) as res:
+                res.read()
+        except Exception:
+            pass
+            
+    try:
+        threading.Thread(target=do_post, daemon=True).start()
+    except Exception:
+        pass
+
 @app.post("/api/login")
 async def login(req: LoginRequest, request: Request):
     """
@@ -333,6 +370,10 @@ async def login(req: LoginRequest, request: Request):
     if is_rate_limited(client_ip, limit=5, period=60):
         raise HTTPException(429, "Too many login attempts. Please try again in 60 seconds.")
 
+    # Account Lockout Check
+    if db.is_account_locked(req.username):
+        raise HTTPException(423, "Account temporarily locked due to too many failed attempts. Try again in 15 minutes.")
+
     if not db.user_exists(req.username):
         raise HTTPException(400, f"Username '{req.username}' does not exist. Please register.")
 
@@ -340,6 +381,10 @@ async def login(req: LoginRequest, request: Request):
 
     if user.get("password_hash") and (req.password or not req.key_events):
         if not db.verify_password(req.username, req.password):
+            fail_count = db.record_login_failure(req.username)
+            if fail_count >= 5:
+                db.lock_account(req.username, duration_sec=900)
+                raise HTTPException(423, "Account locked for 15 minutes after 5 failed attempts.")
             raise HTTPException(401, "Invalid password")
 
     # Compute device fingerprint from browser metadata
@@ -375,9 +420,26 @@ async def login(req: LoginRequest, request: Request):
         device_class       = device_class,
     )
 
-    # Run initial scoring on login keystroke data
-    if req.key_events:
-        score_result = ml.score_session(session_id, req.key_events, [])
+    # Run initial scoring on login keystroke data (evaluating both username and password fields)
+    has_keystroke_data = bool(req.key_events or req.username_key_events)
+    if has_keystroke_data:
+        score_result = ml.score_session(
+            session_id, 
+            key_events=req.key_events, 
+            mouse_samples=[], 
+            username_key_events=req.username_key_events
+        )
+        if score_result["band"] in ("RED_LOW", "RED_HIGH", "RED_CRITICAL") or score_result.get("is_bot"):
+            # Behavioral lockout increment
+            fail_count = db.record_login_failure(req.username)
+            # Invalidate session
+            db.invalidate_session(session_id, reason=f"Login behavioral failure: {score_result['band']}")
+            # Send real push alert via ntfy.sh
+            send_push_alert(req.username, score_result["final_score"], score_result["band"], is_bot=score_result.get("is_bot", False))
+            if fail_count >= 5:
+                db.lock_account(req.username, duration_sec=900)
+                raise HTTPException(423, "Account locked for 15 minutes after 5 failed biometric attempts.")
+            raise HTTPException(401, "Invalid behavioral signature")
     else:
         score_result = {
             "final_score": 0.0, "band": "GREEN",
@@ -385,11 +447,16 @@ async def login(req: LoginRequest, request: Request):
             "top_contributors": [],
         }
 
+    # Successful login: reset failed login attempts and update hour histogram
+    db.clear_login_failures(req.username)
+    now_hour = int(time.strftime("%H", time.localtime(time.time())))
+    db.update_login_hour(req.username, now_hour, device_class)
+
     db.log_event(
         event_type = "LOGIN_OK",
         session_id = session_id,
         username   = req.username,
-        details    = {"device_fp": device_fp},
+        details    = {"device_fp": device_fp, "username_keys_captured": len(req.username_key_events or [])},
         risk_score = score_result["final_score"],
         risk_band  = score_result["band"],
     )
@@ -415,6 +482,7 @@ async def login(req: LoginRequest, request: Request):
         "band":         score_result["band"],
         "action":       score_result["action"],
         "is_bot":       score_result.get("is_bot", False),
+        "scoring_interval": DEFAULT_SCORING_INTERVAL_SEC,
     }
 
 
@@ -467,11 +535,83 @@ async def score(req: ScoreRequest):
     if req.webdriver_flag:
         session["webdriver_flag"] = req.webdriver_flag
 
+    # Build metadata dict for pre-screening bot detection
+    metadata = {
+        "webdriver_flag":      session.get("webdriver_flag", False),
+        "click_dwell_mean":    session.get("click_dwell_mean", 120.0),
+    }
+
+    # 1. Bot detection pre-screening (immediate, runs before any status bypass)
+    # This ensures automated bots trying to reuse terminated session tokens are blocked/banned immediately
+    is_bot, bot_reason = ml.detect_bot(req.key_events or [], req.mouse_samples or [], metadata)
+    if is_bot:
+        ip = session.get("ip_address", "127.0.0.1")
+        db.register_bot_detection(ip)
+        # Broadcast bot event to dashboard
+        await manager.broadcast({
+            "type":             "score_update",
+            "session_id":       req.session_id,
+            "username":         session["username"],
+            "score":            BOT_SCORE_OVERRIDE,
+            "band":             "RED_CRITICAL",
+            "action":           "SILENT_BLOCK",
+            "keystroke_score":  0.0,
+            "mouse_score":      0.0,
+            "metadata_score":   0.0,
+            "top_contributors": [{"feature": "bot_detection", "label": bot_reason, "contribution": 100.0}],
+            "all_contributors": [{"feature": "bot_detection", "label": bot_reason, "contribution": 100.0}],
+            "is_bot":           True,
+            "velocity_flag":    False,
+            "mouse_samples":    req.mouse_samples,
+            "risk_history":     db.get_session_risk_history(req.session_id),
+            "timestamp":        time.time(),
+            "ip_address":       ip,
+            "user_agent":       session.get("user_agent"),
+            "scoring_interval": 30,
+            "session_count":    db.get_session_count(session["username"]),
+            "profile_warm":     db.get_session_count(session["username"]) >= 15,
+        })
+        # Send real push alert via ntfy.sh
+        if not _const_mod.ADVISORY_MODE:
+            send_push_alert(session["username"], BOT_SCORE_OVERRIDE, "RED_CRITICAL", is_bot=True)
+            db.invalidate_session(req.session_id, reason=f"Bot detected: {bot_reason}")
+            
+        return {
+            "score":             BOT_SCORE_OVERRIDE,
+            "band":              "RED_CRITICAL",
+            "action":            "MONITOR" if _const_mod.ADVISORY_MODE else "SILENT_BLOCK",
+            "is_bot":            True,
+            "top_contributors":  [{"feature": "bot_detection", "label": bot_reason, "contribution": 100.0}],
+            "keystroke_score":   0.0,
+            "mouse_score":       0.0,
+            "metadata_score":    0.0,
+            "velocity_exceeded": False,
+        }
+
+    # Flapper Prevention: If session is already frozen/terminated, bypass scoring and return immediate state
+    # Bypassed in Advisory Mode to allow continuous telemetry visual scoring without UI freezing
+    frozen_statuses = ("terminated", "red_high", "red_low", "red_critical")
+    if session.get("status") in frozen_statuses and not _const_mod.ADVISORY_MODE:
+        return {
+            "score":             session["current_risk"],
+            "band":              session["risk_band"],
+            "action":            "FREEZE_SESSION" if session["risk_band"] == "RED_LOW" else "FREEZE_AND_ALERT",
+            "is_bot":            session.get("is_bot", False),
+            "top_contributors":  [],
+            "keystroke_score":   0.0,
+            "mouse_score":       0.0,
+            "metadata_score":    0.0,
+            "velocity_exceeded": False,
+            "scoring_interval":  DEFAULT_SCORING_INTERVAL_SEC,
+            "session_count":     db.get_session_count(session["username"]),
+            "profile_warm":      db.get_session_count(session["username"]) >= 15,
+        }
+
     # Run the ML scoring pipeline
     result = ml.score_session(req.session_id, req.key_events, req.mouse_samples)
 
-    # Handle bot detection — register for IP rate limiting
-    if result.get("is_bot"):
+    # Handle bot detection and critical threats — register for IP rate limiting
+    if result.get("is_bot") or result.get("band") == "RED_CRITICAL":
         ip = session.get("ip_address", "127.0.0.1")
         db.register_bot_detection(ip)
 
@@ -500,29 +640,36 @@ async def score(req: ScoreRequest):
         "profile_warm":     db.get_session_count(session["username"]) >= 15,
     })
 
-    # Trigger freeze events on high-risk bands
-    if result["band"] in ("RED_LOW", "RED_HIGH") and session["status"] not in ("terminated",):
-        db.invalidate_session(req.session_id, reason=f"Risk band: {result['band']}")
+    # In Advisory Mode we ONLY observe — never freeze the session or alert the user.
+    # The SOC dashboard still receives the full risk score via WebSocket above.
+    if not _const_mod.ADVISORY_MODE:
+        # Trigger real push notification on any RED/BOT activity
+        if result["band"] in ("RED_LOW", "RED_HIGH", "RED_CRITICAL") or result.get("is_bot"):
+            send_push_alert(session["username"], result["final_score"], result["band"], is_bot=result.get("is_bot", False))
 
-        # Simulate SMS/account alert for RED_HIGH
-        if result["band"] == "RED_HIGH":
-            alert_event = db.log_event(
-                event_type = "SIMULATED_SMS_ALERT",
-                session_id = req.session_id,
-                username   = session["username"],
-                details    = {
-                    "simulated": True,
-                    "message":   "Suspicious session detected. Your session has been ended.",
-                    "channel":   "SMS + EMAIL",
-                },
-                risk_score = result["final_score"],
-                risk_band  = result["band"],
-            )
-            await manager.broadcast({
-                "type":    "simulated_alert",
-                "alert":   alert_event,
-                "username": session["username"],
-            })
+        # Trigger freeze events on high-risk bands (RED_LOW, RED_HIGH, RED_CRITICAL)
+        if result["band"] in ("RED_LOW", "RED_HIGH", "RED_CRITICAL") and session["status"] not in frozen_statuses:
+            db.invalidate_session(req.session_id, reason=f"Risk band: {result['band']}")
+
+            # Simulate SMS/account alert for RED_HIGH or RED_CRITICAL
+            if result["band"] in ("RED_HIGH", "RED_CRITICAL"):
+                alert_event = db.log_event(
+                    event_type = "SIMULATED_SMS_ALERT",
+                    session_id = req.session_id,
+                    username   = session["username"],
+                    details    = {
+                        "simulated": True,
+                        "message":   "Suspicious session detected. Your session has been ended.",
+                        "channel":   "SMS + EMAIL",
+                    },
+                    risk_score = result["final_score"],
+                    risk_band  = result["band"],
+                )
+                await manager.broadcast({
+                    "type":    "simulated_alert",
+                    "alert":   alert_event,
+                    "username": session["username"],
+                })
 
     return {
         "score":             result["final_score"],
@@ -654,7 +801,11 @@ def check_transaction_risk_rules(session: dict, action: str, amount: float) -> d
     """
     band = session.get("risk_band", "GREEN")
     status = session.get("status", "")
-    
+
+    # In Advisory Mode: always allow — SOC observes via dashboard, user is never blocked
+    if _const_mod.ADVISORY_MODE:
+        return {"allowed": True, "otp_required": False, "reason": "advisory_mode", "message": ""}
+
     # 1. RED_HIGH or RED_CRITICAL or Terminated session: Block ALL transactions/UPI regardless of amount
     if band in ("RED_HIGH", "RED_CRITICAL") or status == "terminated":
         return {
@@ -780,7 +931,20 @@ async def get_session(session_id: str):
         "scoring_interval": session["scoring_interval"],
         "reauth_attempts":  session["reauth_attempts"],
         "created_at":    session["created_at"],
+        "advisory_mode": _const_mod.ADVISORY_MODE,
     }
+
+
+@app.post("/api/session/terminate/{session_id}")
+async def terminate_session(session_id: str):
+    db.invalidate_session(session_id, reason="User terminated session")
+    await manager.broadcast({
+        "type":       "session_frozen",
+        "session_id": session_id,
+        "username":   "terminated",
+        "reason":     "User terminated session",
+    })
+    return {"status": "ok"}
 
 
 # =============================================================================
@@ -875,7 +1039,7 @@ async def dashboard_frozen_sessions():
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM sessions 
-        WHERE status = 'red_high'
+        WHERE status IN ('red_high', 'red_low', 'red_critical', 'terminated') AND risk_band LIKE 'RED%'
         ORDER BY created_at DESC
     """)
     rows = cursor.fetchall()
@@ -1051,9 +1215,36 @@ async def admin_soft_reset():
     Soft reset — clears in-memory sessions and logs but keeps enrolled user profiles in SQLite.
     Useful for showing a new attack scenario without re-enrolling.
     """
-    db.reset_all()   # clears in-memory sessions, ip_tracker, model_cache only
+    db.soft_reset()
     await manager.broadcast({"type": "soft_reset"})
     return {"reset": True, "message": "Sessions cleared. Enrolled profiles retained in database."}
+
+
+@app.post("/api/admin/retrain")
+async def admin_retrain(force: bool = True):
+    """
+    Trigger XGBoost model retraining using the SQLite data collection.
+    """
+    try:
+        import scripts.retrain_xgb_augmented as retrainer
+        import ml_engine as ml
+        
+        # Run retraining with force and raise_on_error enabled
+        report = retrainer.retrain(real_sample_weight=5.0, force=force, raise_on_error=True)
+        
+        # Hot-reload the baselines and XGBoost model into ml_engine
+        ml.load_generic_baselines()
+        
+        # Broadcast retraining success to SOC dashboard so it updates charts
+        await manager.broadcast({
+            "type": "model_retrained",
+            "report": report
+        })
+        
+        return {"success": True, "report": report}
+    except Exception as e:
+        log.error(f"Retraining failed: {e}")
+        raise HTTPException(500, detail=str(e))
 
 
 @app.get("/api/admin/baseline/{username}")
@@ -1170,8 +1361,20 @@ async def bill_payment(req: BillPaymentRequest):
     session = db.get_session(req.session_id)
     if not session:
         raise HTTPException(404, "Session not found")
-    if session["status"] == "terminated":
-        raise HTTPException(403, "Session is frozen")
+    # Enforce shared transaction risk rules
+    res = check_transaction_risk_rules(session, "bill_payment", req.amount)
+    if not res["allowed"]:
+        if res["reason"] == "elevated_risk":
+            raise HTTPException(403, "Transaction blocked due to elevated session risk")
+        else:
+            raise HTTPException(403, "Transaction blocked: session is frozen")
+
+    if res["otp_required"]:
+        return {
+            "success": False,
+            "requires_verification": True,
+            "message": "Additional verification required."
+        }
 
     username = session["username"]
     user     = db.get_user(username)
@@ -1308,8 +1511,20 @@ async def book_fd(req: FDRequest):
     session = db.get_session(req.session_id)
     if not session:
         raise HTTPException(404, "Session not found")
-    if session["status"] == "terminated":
-        raise HTTPException(403, "Session is frozen")
+    # Enforce shared transaction risk rules
+    res = check_transaction_risk_rules(session, "fd", req.amount)
+    if not res["allowed"]:
+        if res["reason"] == "elevated_risk":
+            raise HTTPException(403, "Transaction blocked due to elevated session risk")
+        else:
+            raise HTTPException(403, "Transaction blocked: session is frozen")
+
+    if res["otp_required"]:
+        return {
+            "success": False,
+            "requires_verification": True,
+            "message": "Additional verification required."
+        }
         
     username = session["username"]
     user = db.get_user(username)

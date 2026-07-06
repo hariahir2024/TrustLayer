@@ -90,6 +90,7 @@ def init_db(db_path: Optional[str] = None):
         enrollment_seqs TEXT DEFAULT '[]',
         mouse_vectors TEXT DEFAULT '[]',
         device_fps TEXT DEFAULT '[]',
+        login_hour_histogram TEXT DEFAULT '{}',
         enrolled_at REAL,
         updated_at REAL,
         PRIMARY KEY (username, device_class)
@@ -207,6 +208,22 @@ def init_db(db_path: Optional[str] = None):
     );
     """)
     
+    # 10. Login failures table (persistent security lockout)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS login_failures (
+        username TEXT PRIMARY KEY,
+        fail_count INTEGER DEFAULT 0,
+        locked_until REAL DEFAULT 0,
+        last_fail_at REAL DEFAULT 0
+    );
+    """)
+
+    # Gracefully add login_hour_histogram column to behavioral_profiles if not exists
+    try:
+        cursor.execute("ALTER TABLE behavioral_profiles ADD COLUMN login_hour_histogram TEXT DEFAULT '{}'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
 
@@ -934,7 +951,8 @@ def get_active_sessions() -> list:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM sessions 
-        WHERE status != 'terminated' AND status != 'red_high'
+        WHERE status NOT IN ('terminated', 'red_high', 'red_low', 'red_critical')
+          AND risk_band NOT LIKE 'RED%'
         ORDER BY created_at DESC
     """)
     rows = cursor.fetchall()
@@ -956,8 +974,8 @@ def get_active_sessions_matching_user(username: str) -> list:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT * FROM sessions 
-        WHERE status != 'terminated' 
-          AND status != 'red_high' 
+        WHERE status NOT IN ('terminated', 'red_high', 'red_low', 'red_critical')
+          AND risk_band NOT LIKE 'RED%'
           AND username LIKE ?
         ORDER BY created_at DESC
     """, (f"%{username}%",))
@@ -1408,9 +1426,12 @@ def get_stats() -> dict:
                 if f1 is not None:
                     f1_score = f"{f1 * 100:.1f}%"
                     
-                # If we have seeded/validated numbers, we can extract them
-                # False positive rate (suppression = 100 - FP rate)
-                fp_suppression = "98.8%" # standard model baseline
+                fp = meta.get("fusion_model", {}).get("performance", {}).get("fp_suppression")
+                if fp is not None:
+                    fp_suppression = f"{fp * 100:.1f}%"
+                else:
+                    fp_suppression = "98.8%"
+                    
                 avg_response_time = "1.4s" # standard system baseline
     except Exception:
         pass
@@ -1470,6 +1491,11 @@ def is_ip_blocked(ip: str) -> tuple[bool, str]:
 
 def register_bot_detection(ip: str) -> dict:
     """Log a bot IP trigger event and update rate limits."""
+    # Loopback Bypass Guard
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        print(f"[SQLite] Loopback/localhost IP {ip} detected. Bypassing rate limiting/blocking to prevent developer lockout.")
+        return {"ip": ip, "bot_detection_count": 0, "rate_limited_until": 0, "blocked_until": 0}
+
     from constants import (
         IP_RATE_LIMIT_COOLDOWN_SEC,
         IP_BLOCK_DURATION_SEC,
@@ -1570,6 +1596,7 @@ def reset_all() -> None:
     cursor.execute("DELETE FROM payees")
     cursor.execute("DELETE FROM sessions")
     cursor.execute("DELETE FROM ip_tracker")
+    cursor.execute("DELETE FROM login_failures")
     conn.commit()
     conn.close()
     
@@ -1582,6 +1609,89 @@ def reset_all() -> None:
                 pass
     _model_cache.clear()
     print("[SQLite] Reset complete. Database and cached model profiles cleared.")
+
+def soft_reset() -> None:
+    """Clear only sessions and logs but retain user profiles and database structure."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM transactions")
+    cursor.execute("DELETE FROM security_events")
+    cursor.execute("DELETE FROM sessions")
+    cursor.execute("DELETE FROM ip_tracker")
+    cursor.execute("DELETE FROM login_failures")
+    conn.commit()
+    conn.close()
+    print("[SQLite] Soft reset complete. Active sessions, transactions and security events cleared.")
+
+def record_login_failure(username: str) -> int:
+    """Increment failed login counter for a username. Returns current fail count."""
+    conn = _get_conn()
+    now = time.time()
+    conn.execute("""
+        INSERT INTO login_failures (username, fail_count, last_fail_at)
+        VALUES (?, 1, ?)
+        ON CONFLICT(username) DO UPDATE SET
+            fail_count = fail_count + 1,
+            last_fail_at = ?
+    """, (username, now, now))
+    row = conn.execute("SELECT fail_count FROM login_failures WHERE username=?", (username,)).fetchone()
+    count = row[0] if row else 1
+    conn.commit()
+    conn.close()
+    return count
+
+def lock_account(username: str, duration_sec: int = 900) -> None:
+    """Lock username account for duration_sec (default 15 mins)."""
+    conn = _get_conn()
+    conn.execute("""
+        INSERT INTO login_failures (username, locked_until)
+        VALUES (?, ?)
+        ON CONFLICT(username) DO UPDATE SET locked_until = ?
+    """, (username, time.time() + duration_sec, time.time() + duration_sec))
+    conn.commit()
+    conn.close()
+
+def is_account_locked(username: str) -> bool:
+    """Check if account is locked out."""
+    conn = _get_conn()
+    row = conn.execute("SELECT locked_until FROM login_failures WHERE username=?", (username,)).fetchone()
+    conn.close()
+    return bool(row and row[0] > time.time())
+
+def clear_login_failures(username: str) -> None:
+    """Reset failed login count upon successful login."""
+    conn = _get_conn()
+    conn.execute("DELETE FROM login_failures WHERE username=?", (username,))
+    conn.commit()
+    conn.close()
+
+def update_login_hour(username: str, hour: int, device_class: str = "DESKTOP") -> None:
+    """Update historical login hour histogram for a user."""
+    conn = _get_conn()
+    row = conn.execute("SELECT login_hour_histogram FROM behavioral_profiles WHERE username=? AND device_class=?", (username, device_class)).fetchone()
+    if row:
+        import json
+        try:
+            hist = json.loads(row[0])
+        except Exception:
+            hist = {}
+        hist[str(hour)] = hist.get(str(hour), 0) + 1
+        conn.execute("UPDATE behavioral_profiles SET login_hour_histogram=? WHERE username=? AND device_class=?", (json.dumps(hist), username, device_class))
+        conn.commit()
+    conn.close()
+
+def get_user_login_hour_history(username: str, device_class: str = "DESKTOP") -> dict:
+    """Fetch user's login hour histogram."""
+    conn = _get_conn()
+    row = conn.execute("SELECT login_hour_histogram FROM behavioral_profiles WHERE username=? AND device_class=?", (username, device_class)).fetchone()
+    conn.close()
+    if row:
+        import json
+        try:
+            return json.loads(row[0])
+        except Exception:
+            pass
+    return {}
 
 def get_database_summary() -> dict:
     """Return statistics of database storage."""

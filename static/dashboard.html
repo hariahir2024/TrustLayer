@@ -120,6 +120,13 @@
                font-size:11px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">
         <i class="ti ti-alert-triangle"></i> Active Mode &#x2014; Click for Advisory
       </button>
+      <button id="btn-enable-alerts"
+        onclick="enableAudioAlerts()"
+        style="width:100%;padding:8px 12px;margin-bottom:8px;background:rgba(250,204,21,0.12);
+               border:1px solid #facc15;border-radius:8px;color:#facc15;
+               font-size:11px;font-weight:600;cursor:pointer;text-align:left;display:flex;align-items:center;gap:6px;">
+        <i class="ti ti-bell"></i> <span id="alert-btn-label">Enable Audio Alerts</span>
+      </button>
       <button class="btn btn-secondary btn-sm mb-2" id="btn-soft-reset" style="text-align: left; justify-content: flex-start; padding-left: 0.75rem; display:flex; align-items:center; gap:6px;">
         <i class="ti ti-refresh"></i> Clear Live Sessions
       </button>
@@ -670,7 +677,7 @@
         <div style="padding:0 16px 16px 16px;font-size:12px;color:#94a3b8;line-height:1.8;border-top:1px dashed rgba(251,191,36,0.15);padding-top:12px;">
           <ol style="padding-left:1.2em;">
             <li><strong style="color:#e2e8f0;">Have a friend/family log in</strong> as a test user (use their own account).</li>
-            <li>Ask them to complete <strong style="color:#e2e8f0;">2â€“3 sessions</strong> typing deliberately differently â€” like an intruder would (slow, hesitant, unfamiliar).</li>
+            <li>Ask them to complete <strong style="color:#e2e8f0;">2-3 sessions</strong> typing deliberately differently - like an intruder would (slow, hesitant, unfamiliar).</li>
             <li>After they finish, come to the <strong style="color:#e2e8f0;">Real-Time Monitor</strong> tab and click on their session.</li>
             <li>In the session drawer, use the <strong style="color:#fbbf24;">"Mark as Intruder"</strong> button to retroactively label those sessions.</li>
             <li>Repeat until you have <strong style="color:#ef4444;">20+ intruder-labeled sessions</strong> across different users.</li>
@@ -706,7 +713,7 @@
       </div>
     </div>
     
-    <div id="guide-content" style="height: calc(100vh - 140px); overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
+    <div id="guide-content" style="flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
       
       <!-- Keystroke dynamics card -->
       <div class="card guide-card" style="padding: 1rem; border-left: 3px solid var(--amber); background: rgba(255,255,255,0.02); display: block;">
